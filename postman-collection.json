@@ -60,6 +60,97 @@
         "description": "Send a chat message to the AI and get a response with optional audio/video/quiz"
       },
       "response": []
+    },
+    {
+      "name": "Chat Message with Audio",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-User-ID",
+            "value": "test-user-123"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"message\": {\n    \"id\": \"msg-audio-1\",\n    \"userId\": \"test-user-123\",\n    \"content\": \"Can you explain the water cycle in simple terms?\",\n    \"timestamp\": \"2024-01-01T00:00:00Z\"\n  },\n  \"requireAudio\": true\n}"
+        },
+        "url": {
+          "raw": "http://localhost:8000/api/v1/chat/message",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8000",
+          "path": [
+            "api",
+            "v1",
+            "chat",
+            "message"
+          ]
+        },
+        "description": "Send a chat message requesting audio response using ElevenLabs TTS"
+      },
+      "response": []
+    },
+    {
+      "name": "Get Available Voices",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8000/api/v1/voices",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8000",
+          "path": [
+            "api",
+            "v1",
+            "voices"
+          ]
+        },
+        "description": "Get list of available ElevenLabs voices"
+      },
+      "response": []
+    },
+    {
+      "name": "Generate Test Audio",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8000/api/v1/audio/generate?text=Hello, this is a test of ElevenLabs text to speech integration.&voice_id=21m00Tcm4TlvDq8ikWAM",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8000",
+          "path": [
+            "api",
+            "v1",
+            "audio",
+            "generate"
+          ],
+          "query": [
+            {
+              "key": "text",
+              "value": "Hello, this is a test of ElevenLabs text to speech integration."
+            },
+            {
+              "key": "voice_id",
+              "value": "21m00Tcm4TlvDq8ikWAM"
+            }
+          ]
+        },
+        "description": "Generate test audio using ElevenLabs TTS"
+      },
+      "response": []
     }
   ]
 }

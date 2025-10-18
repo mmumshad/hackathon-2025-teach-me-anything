@@ -10,6 +10,7 @@ import os
 from config import Config
 from services import OpenAIService
 from services.openai_video_service import OpenAIVideoService
+from services import OpenAIService, ElevenLabsService
 from models import ChatRequest, ChatResponse, ChatMessageResponse, QuizQuestion
 from utils import generate_user_id
 
@@ -31,6 +32,7 @@ app.add_middleware(
 # Initialize services
 openai_service = OpenAIService()
 video_service = OpenAIVideoService()
+elevenlabs_service = ElevenLabsService()
 
 # Models are now imported from models package
 
@@ -58,23 +60,33 @@ async def chat_message(
         should_generate_video = openai_service.should_generate_video(chat_request.message.content)
         quiz_questions = None
         video_data = None
+        # Check if this is a quiz request
+        is_quiz_request = openai_service.should_generate_quiz(chat_request.message.content)
+        logger.info(f"Is quiz request: {is_quiz_request}")
         
-        # Generate AI response with quiz request flag
-        ai_response = await openai_service.generate_chat_response(
+        # Generate AI response
+        logger.info(f"Calling generate_chat_response with is_quiz_request={is_quiz_request}")
+        ai_response = openai_service.generate_chat_response(
             user_message=chat_request.message.content,
             user_id=x_user_id,
-            is_quiz_request=should_generate_quiz
+            is_quiz_request=is_quiz_request
         )
+        logger.info(f"AI response received: {ai_response[:100]}...")
         
-        if should_generate_quiz:
-            logger.info("Generating quiz for user request")
-            try:
-                # Extract topic from the message for quiz generation
-                topic = chat_request.message.content
-                quiz_questions = await openai_service.generate_quiz(topic)
-            except Exception as quiz_error:
-                logger.warning(f"Failed to generate quiz: {str(quiz_error)}")
-                # Continue without quiz if generation fails
+        # Generate quiz if requested
+        quiz_questions = []
+        if is_quiz_request:
+            logger.info("Generating quiz questions...")
+            # Extract topic from the message for quiz generation
+            topic = chat_request.message.content.lower()
+            # Remove common quiz request words to get the topic
+            for word in ["quiz", "test", "question", "assessment", "check my understanding", "test me", "questions"]:
+                topic = topic.replace(word, "").strip()
+            if not topic:
+                topic = "general knowledge"
+            
+            quiz_questions = openai_service.generate_quiz(topic, "medium", 3)
+            logger.info(f"Generated {len(quiz_questions)} quiz questions")
         
         if should_generate_video:
             logger.info("Generating video for user request")
@@ -109,6 +121,18 @@ async def chat_message(
         response_id = str(uuid.uuid4())
         current_timestamp = datetime.now().isoformat()
         
+        # Generate audio if requested
+        audio_url = None
+        if chat_request.requireAudio:
+            logger.info("Generating audio...")
+            audio_base64 = elevenlabs_service.generate_audio(ai_response)
+            if audio_base64:
+                audio_url = f"data:audio/mpeg;base64,{audio_base64}"
+                logger.info("Audio generated successfully")
+            else:
+                logger.warning("Failed to generate audio, falling back to mock URL")
+                audio_url = "https://example.com/mock-audio.mp3"
+        
         # Build response
         response_data = {
             "responses": [
@@ -130,6 +154,8 @@ async def chat_message(
         
     except Exception as e:
         logger.error(f"Error processing chat message: {str(e)}")
+        import traceback
+        logger.error(f"Full traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Error processing chat message: {str(e)}")
 
 # Video status endpoint
