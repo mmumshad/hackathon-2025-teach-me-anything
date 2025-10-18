@@ -131,11 +131,26 @@ export default function ChatInterface() {
         {/* Messages History - Show only last 2 messages */}
         {messages.length > 0 && (
           <div className="w-full max-w-4xl mb-8 space-y-6">
-            {messages.slice(-2).map((message) => (
-              <div key={message.id} className="text-lg text-gray-600 text-center leading-relaxed">
-                {message.content}
-              </div>
-            ))}
+            {messages.slice(-2).map((message, index) => {
+              const isOldest = messages.length > 1 && index === 0;
+              return (
+                <div 
+                  key={message.id} 
+                  className={`text-lg text-gray-600 text-center leading-relaxed ${
+                    isOldest ? 'relative' : ''
+                  }`}
+                  style={isOldest ? {
+                    background: 'linear-gradient(to bottom, transparent 0%, rgba(107, 114, 128, 0.1) 20%, rgba(107, 114, 128, 0.2) 40%, rgba(107, 114, 128, 0.3) 60%, rgba(107, 114, 128, 0.4) 80%, rgba(107, 114, 128, 0.5) 100%)',
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                    backgroundClip: 'text',
+                    color: 'transparent'
+                  } : {}}
+                >
+                  {message.content}
+                </div>
+              );
+            })}
           </div>
         )}
 
