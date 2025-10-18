@@ -572,4 +572,49 @@ class SupabaseMCPService:
                 "error": str(e)
             }
     
+    def get_user_chat_history(self, user_id: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """
+        Get recent chat history for a user from Supabase
+        
+        Args:
+            user_id: The user ID to get chat history for
+            limit: Number of recent conversations to retrieve (default: 5)
+            
+        Returns:
+            List of recent chat conversations with user messages and AI responses
+        """
+        try:
+            logger.info(f"Getting chat history for user {user_id}, limit: {limit}")
+            
+            # Query user_learning_history table for recent conversations
+            response = self.supabase.table("user_learning_history").select(
+                "question, response, created_at"
+            ).eq("user_id", user_id).order("created_at", desc=True).limit(limit).execute()
+            
+            if response.data:
+                logger.info(f"Found {len(response.data)} recent conversations for user {user_id}")
+                
+                # Format the chat history for LLM context
+                chat_history = []
+                for conversation in reversed(response.data):  # Reverse to get chronological order
+                    if conversation.get("question") and conversation.get("response"):
+                        chat_history.append({
+                            "role": "user",
+                            "content": conversation["question"]
+                        })
+                        chat_history.append({
+                            "role": "assistant", 
+                            "content": conversation["response"]
+                        })
+                
+                logger.info(f"Formatted {len(chat_history)} messages for chat context")
+                return chat_history
+            else:
+                logger.info(f"No chat history found for user {user_id}")
+                return []
+                
+        except Exception as e:
+            logger.error(f"Error getting chat history for user {user_id}: {str(e)}")
+            return []
+    
     # MCP close session method removed to resolve dependency conflict
