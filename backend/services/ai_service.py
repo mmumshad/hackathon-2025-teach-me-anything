@@ -144,6 +144,8 @@ class OpenAIService:
             
             IMPORTANT VIDEO RESPONSE RULE: When users ask for videos or visual content, your response must be EXACTLY: "Creating a video for you now...." Do not customize this message or add any other text.
             
+            CRITICAL: Keep your response to 50 words or less. Be concise and focused on the key points.
+            
             Always be positive, patient, and educational in your responses."""
         
         if grade_level:

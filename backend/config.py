@@ -34,6 +34,7 @@ class Config:
     # Server Configuration
     DEBUG: bool = os.getenv("DEBUG", "False").lower() == "true"
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
+    DEMO_MODE: bool = os.getenv("DEMO_MODE", "False").lower() == "true"
     
     # API Settings
     MAX_RESPONSE_LENGTH: int = int(os.getenv("MAX_RESPONSE_LENGTH", "1000"))

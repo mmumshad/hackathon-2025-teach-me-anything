@@ -8,6 +8,7 @@ import ApiClient, { type ChatMessage, type ChatResponse } from '@/lib/api';
 import { Particles } from '@/components/ui/particles';
 import { Quiz } from '@/components/ui/quiz';
 import LoaderOne from '@/components/ui/loader-one';
+import { VideoGenerationProgress } from '@/components/ui/video-generation-progress';
 
 export default function ChatInterface() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -333,19 +334,9 @@ export default function ChatInterface() {
                   Your browser does not support the video tag.
                 </video>
               ) : (
-                // Video is generating - show placeholder with loading
+                // Video is generating - show placeholder with progress bar
                 <div className="absolute inset-0 w-full h-full bg-gradient-to-br from-blue-50 to-purple-50 rounded-[2rem] shadow-2xl flex items-center justify-center">
-                  <div className="text-center">
-                    <div className="mb-6">
-                      <LoaderOne />
-                    </div>
-                    <div className="text-xl text-gray-600 font-light">
-                      Generating your video...
-                    </div>
-                    <div className="text-sm text-gray-500 mt-2">
-                      This may take a few minutes
-                    </div>
-                  </div>
+                  <VideoGenerationProgress isGenerating={isVideoGenerating} />
                 </div>
               )}
             </div>

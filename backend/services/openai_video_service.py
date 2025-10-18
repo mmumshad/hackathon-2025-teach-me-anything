@@ -16,11 +16,14 @@ class OpenAIVideoService:
     def __init__(self):
         """Initialize OpenAI video service"""
         self.openai_api_key = Config.OPENAI_API_KEY
+        self.demo_mode = Config.DEMO_MODE
+        self.demo_video_path = Path("downloads/video_68f3cc10a178819182dea41f5260df460e238e5d025fc0e1.mp4")
         
-        if not self.openai_api_key:
+        if not self.demo_mode and not self.openai_api_key:
             raise ValueError("OpenAI API key is required but not found in configuration")
         
-        self.client = openai.OpenAI(api_key=self.openai_api_key)
+        if not self.demo_mode:
+            self.client = openai.OpenAI(api_key=self.openai_api_key)
     
     async def generate_video(
         self, 
@@ -30,7 +33,7 @@ class OpenAIVideoService:
         seconds: str = "8"
     ) -> Dict[str, Any]:
         """
-        Generate video using OpenAI Sora 2
+        Generate video using OpenAI Sora 2 or return demo video
         
         Args:
             prompt: Text description of the video to generate
@@ -42,6 +45,25 @@ class OpenAIVideoService:
             Dictionary with video information
         """
         try:
+            # Demo mode - return demo video immediately
+            if self.demo_mode:
+                import uuid
+                demo_video_id = f"demo_{uuid.uuid4().hex[:16]}"
+                
+                return {
+                    "provider": "demo",
+                    "id": demo_video_id,
+                    "object": "video",
+                    "model": "demo-model",
+                    "status": "completed",  # Demo video is immediately available
+                    "progress": 100,
+                    "created_at": int(time.time()),
+                    "size": size,
+                    "seconds": seconds,
+                    "prompt": prompt,
+                    "demo_mode": True
+                }
+            
             # Validate parameters
             if size not in self.get_valid_sizes():
                 raise ValueError(f"Invalid size: {size}. Valid sizes: {self.get_valid_sizes()}")
@@ -84,6 +106,22 @@ class OpenAIVideoService:
             Dictionary with status information
         """
         try:
+            # Demo mode - return demo video status
+            if self.demo_mode and video_id.startswith("demo_"):
+                return {
+                    "provider": "demo",
+                    "id": video_id,
+                    "object": "video",
+                    "model": "demo-model",
+                    "status": "completed",
+                    "progress": 100,
+                    "created_at": int(time.time()),
+                    "size": "1280x720",
+                    "seconds": "12",
+                    "checked_at": time.time(),
+                    "demo_mode": True
+                }
+            
             # Real OpenAI Sora 2 API call
             video = self.client.videos.retrieve(video_id)
             
@@ -159,6 +197,13 @@ class OpenAIVideoService:
             Path to downloaded file or None if failed
         """
         try:
+            # Demo mode - return demo video file
+            if self.demo_mode and video_id.startswith("demo_"):
+                if self.demo_video_path.exists():
+                    return self.demo_video_path
+                else:
+                    raise ValueError(f"Demo video file not found: {self.demo_video_path}")
+            
             # Check if video is completed
             status = await self.check_status(video_id)
             if status["status"] != "completed":
@@ -231,4 +276,6 @@ class OpenAIVideoService:
     
     def is_available(self) -> bool:
         """Check if OpenAI video service is available"""
+        if self.demo_mode:
+            return self.demo_video_path.exists()
         return self.openai_api_key is not None
