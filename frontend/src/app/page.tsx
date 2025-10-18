@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { generateUUID, getStoredUserId, storeUserId } from '@/lib/utils';
 import ApiClient, { type ChatMessage, type ChatResponse } from '@/lib/api';
 import { Particles } from '@/components/ui/particles';
+import { Quiz } from '@/components/ui/quiz';
 
 export default function ChatInterface() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -17,6 +18,7 @@ export default function ChatInterface() {
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [currentVideoUrl, setCurrentVideoUrl] = useState<string | null>(null);
   const [currentAudioUrl, setCurrentAudioUrl] = useState<string | null>(null);
+  const [currentQuiz, setCurrentQuiz] = useState<ChatResponse['quiz']>(undefined);
   const [userId, setUserId] = useState<string>('');
   const [apiClient, setApiClient] = useState<ApiClient | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -51,12 +53,15 @@ export default function ChatInterface() {
           
           // Move message up and change to small text after typing completes
           setTimeout(() => {
-            setMessages(prev => [...prev, {
-              id: generateUUID(),
-              userId: userId,
-              content: typingText,
-              timestamp: new Date().toISOString()
-            }]);
+            // Only add to message history if there's no quiz
+            if (!currentQuiz) {
+              setMessages(prev => [...prev, {
+                id: generateUUID(),
+                userId: userId,
+                content: typingText,
+                timestamp: new Date().toISOString()
+              }]);
+            }
             setCurrentMessage('');
             setTypingText('');
             // Keep video and audio URLs - don't clear them
@@ -85,9 +90,10 @@ export default function ChatInterface() {
 
     const userMessage = currentMessage.trim();
     setCurrentMessage('');
-    // Clear previous video/audio when sending new message
+    // Clear previous video/audio/quiz when sending new message
     setCurrentVideoUrl(null);
     setCurrentAudioUrl(null);
+    setCurrentQuiz(undefined);
     setIsWaitingForResponse(true);
 
     try {
@@ -103,6 +109,7 @@ export default function ChatInterface() {
       setTypingText(data.response.content);
       setCurrentVideoUrl(data.videoUrl || null);
       setCurrentAudioUrl(data.audioUrl || null);
+      setCurrentQuiz(data.quiz);
       setIsTyping(true);
     } catch (error) {
       console.error('Error sending message:', error);
@@ -120,9 +127,21 @@ export default function ChatInterface() {
 
   const handlePageClick = () => {
     // Focus input when clicking anywhere on the page
-    if (inputRef.current && !isTyping && !isTransitioning && !isWaitingForResponse) {
+    if (inputRef.current && !isTyping && !isTransitioning && !isWaitingForResponse && !currentQuiz) {
       inputRef.current.focus();
     }
+  };
+
+  const clearQuiz = () => {
+    setCurrentQuiz(undefined);
+    // Remove the last message from history if it was added during quiz
+    setMessages(prev => prev.slice(0, -1));
+    // Focus input after quiz completion
+    setTimeout(() => {
+      if (inputRef.current) {
+        inputRef.current.focus();
+      }
+    }, 100);
   };
 
   return (
@@ -137,7 +156,7 @@ export default function ChatInterface() {
       {/* Main Content */}
       <div className="flex-1 flex flex-col items-center justify-center p-8 relative z-10">
         {/* Messages History - Show only last 2 messages */}
-        {messages.length > 0 && (
+        {messages.length > 0 && !currentQuiz && (
           <div className="w-full max-w-4xl mb-8 space-y-6">
             {messages.slice(-2).map((message, index) => {
               const isOldest = messages.length > 1 && index === 0;
@@ -163,7 +182,7 @@ export default function ChatInterface() {
         )}
 
         {/* Current Typing Message */}
-        {(isTyping || isTransitioning) && (
+        {(isTyping || isTransitioning) && !currentQuiz && (
           <div className="text-center mb-8">
             <div className={`font-light leading-relaxed max-w-5xl mx-auto transition-all duration-1000 ease-in-out ${
               isTyping 
@@ -208,6 +227,9 @@ export default function ChatInterface() {
           </div>
         )}
 
+        {/* Quiz Interface */}
+        {currentQuiz && <Quiz quiz={currentQuiz} onQuizComplete={clearQuiz} />}
+
         {/* Input Field - Always visible but disabled during animations */}
         <div className="w-full max-w-5xl">
           <Input
@@ -217,7 +239,7 @@ export default function ChatInterface() {
             onKeyPress={handleKeyPress}
             placeholder=""
             className="text-center text-4xl font-light border-none shadow-none focus:ring-0 focus:border-none bg-transparent py-12 px-6"
-            disabled={isTyping || isTransitioning || isWaitingForResponse}
+            disabled={isTyping || isTransitioning || isWaitingForResponse || !!currentQuiz}
             style={{ fontSize: '2.5rem', lineHeight: '1.4' }}
           />
         </div>
