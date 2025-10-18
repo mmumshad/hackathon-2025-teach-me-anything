@@ -17,6 +17,7 @@ from services.mem0_service import Mem0Service
 from services.supabase_mcp_service import SupabaseMCPService
 from services.supabase_user_preferences_service import SupabaseUserPreferencesService
 from services.intelligent_preference_extraction_service import IntelligentPreferenceExtractionService
+from services.intent_recognition_service import IntentRecognitionService
 from services.pdf_service import PDFService
 from services.user_onboarding_service import UserOnboardingService
 from models import ChatRequest, ChatResponse, ChatMessageResponse, QuizQuestion, FileUploadResponse, ChatMessage
@@ -86,6 +87,7 @@ mem0_service = Mem0Service()
 supabase_mcp_service = SupabaseMCPService()
 supabase_preferences_service = SupabaseUserPreferencesService()
 preference_extraction_service = IntelligentPreferenceExtractionService()
+intent_recognition_service = IntentRecognitionService()
 pdf_service = PDFService()
 onboarding_service = UserOnboardingService()
 
@@ -697,23 +699,26 @@ async def chat_message(
         
         logger.info(f"User context - Name: {user_name}, Grade: {grade_level}, Language: {language}, Learning Style: {learning_style}")
         
-        # Check if user requested a quiz
-        should_generate_quiz = openai_service.should_generate_quiz(chat_request.message.content)
-        logger.info(f"Is quiz request: {should_generate_quiz}")
+        # Use AI-powered intent recognition
+        user_context = {
+            "name": user_name,
+            "grade_level": grade_level,
+            "language": language,
+            "learning_style": learning_style
+        }
         
-        # Check if video should be generated based on user preferences and message
-        should_generate_video = supabase_preferences_service.should_generate_video(x_user_id, chat_request.message.content)
-        logger.info(f"Should generate video: {should_generate_video}")
+        intent_result = intent_recognition_service.detect_intent(chat_request.message.content, user_context)
+        logger.info(f"🎯 AI Intent Detection: {intent_result}")
         
-        # Check if audio should be generated based on user preferences
-        should_generate_audio = supabase_preferences_service.should_generate_audio(x_user_id) or chat_request.requireAudio
-        logger.info(f"Should generate audio: {should_generate_audio}")
+        # Extract intent decisions
+        should_generate_quiz = intent_recognition_service.should_generate_quiz(chat_request.message.content, user_context)
+        should_generate_video = intent_recognition_service.should_generate_video(chat_request.message.content, user_context)
+        should_generate_audio = intent_recognition_service.should_generate_audio(chat_request.message.content, user_context) or chat_request.requireAudio
+        should_generate_audiobook = intent_recognition_service.should_generate_audiobook(chat_request.message.content, user_context)
+        is_material_request = intent_recognition_service.is_material_request(chat_request.message.content, user_context)
+        is_greeting = intent_recognition_service.is_greeting(chat_request.message.content, user_context)
         
-        # Check if user is asking for study material recommendations
-        is_material_request = any(keyword in chat_request.message.content.lower() for keyword in [
-            "book", "recommend", "study material", "resource", "learn", "read", "watch", "course"
-        ])
-        logger.info(f"Is material request: {is_material_request}")
+        logger.info(f"Intent decisions - Quiz: {should_generate_quiz}, Video: {should_generate_video}, Audio: {should_generate_audio}, Audiobook: {should_generate_audiobook}, Material: {is_material_request}, Greeting: {is_greeting}")
         logger.info(f"Message content: {chat_request.message.content}")
         
         # Check for Supabase recommendations first if this is a material request

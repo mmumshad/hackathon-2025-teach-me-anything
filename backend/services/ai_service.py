@@ -162,16 +162,24 @@ IMPORTANT: Look for educational content in the conversation above. If you see to
 Please create quiz questions that test understanding of the main concepts covered in our conversation. 
 Make them {difficulty_level} difficulty level.
 
-Format each question as:
-Question: [question text]
-A) [option 1]
-B) [option 2] 
-C) [option 3]
-D) [option 4]
-Answer: [correct letter]
-Explanation: [brief explanation]
+Return your response as a JSON object with this exact structure:
+{{
+    "questions": [
+        {{
+            "question": "What are atoms made up of?",
+            "options": [
+                {{"id": "a", "text": "Protons, neutrons, and molecules"}},
+                {{"id": "b", "text": "Protons, neutrons, and electrons"}},
+                {{"id": "c", "text": "Protons, electrons, and atoms"}},
+                {{"id": "d", "text": "Neutrons, electrons, and molecules"}}
+            ],
+            "correctAnswerId": "b",
+            "explanation": "Atoms are the basic units of matter, and they are made up of smaller particles: protons, neutrons, and electrons."
+        }}
+    ]
+}}
 
-Generate exactly {num_questions} questions."""
+Generate exactly {num_questions} questions. Return ONLY the JSON object, no other text."""
 
             # Debug: Print the prompt being sent to AI
             logger.info(f"🔍 QUIZ GENERATION DEBUG - Prompt sent to AI:")
@@ -277,97 +285,46 @@ Format your response as JSON with this structure:
 Make sure the questions are educational and test understanding of the topic."""
     
     def _parse_quiz_response(self, quiz_text: str, num_questions: int) -> List[Dict[str, Any]]:
-        """Parse OpenAI response into structured quiz format"""
+        """Parse OpenAI JSON response into structured quiz format"""
         try:
             # Debug: Log what we're trying to parse
             logger.info(f"🔍 PARSING DEBUG - Raw quiz text to parse:")
             logger.info(f"📄 Text: {quiz_text}")
             
-            # Try to extract JSON from the response first
-            json_match = re.search(r'\{.*\}', quiz_text, re.DOTALL)
-            if json_match:
-                logger.info(f"📋 Found JSON match: {json_match.group()}")
-                quiz_data = json.loads(json_match.group())
-                questions = quiz_data.get('questions', [])
-                
-                # Convert to our API format
-                formatted_questions = []
-                for i, q in enumerate(questions[:num_questions]):
-                    formatted_questions.append({
-                        "id": f"q{i+1}",
-                        "question": q.get("question", ""),
-                        "options": q.get("options", []),
-                        "correctAnswerId": q.get("correct_answer_id", ""),
-                        "explanation": q.get("explanation", "")
-                    })
-                
-                logger.info(f"✅ Successfully parsed {len(formatted_questions)} JSON questions")
-                return formatted_questions
-            else:
-                # Try to parse text format (Question: A) B) C) D) Answer: Explanation:)
-                logger.info(f"📝 No JSON found, trying text format parsing")
-                return self._parse_text_format_quiz(quiz_text, num_questions)
-                
-        except (json.JSONDecodeError, Exception) as e:
-            logger.error(f"❌ JSON parsing failed: {e}")
-            # Try text format parsing as fallback
-            return self._parse_text_format_quiz(quiz_text, num_questions)
-    
-    def _parse_text_format_quiz(self, quiz_text: str, num_questions: int) -> List[Dict[str, Any]]:
-        """Parse text format quiz (Question: A) B) C) D) Answer: Explanation:)"""
-        try:
-            logger.info(f"📝 TEXT PARSING DEBUG - Parsing text format quiz")
+            # Try to parse the response as JSON directly
+            try:
+                quiz_data = json.loads(quiz_text.strip())
+                logger.info(f"📋 Successfully parsed JSON directly")
+            except json.JSONDecodeError:
+                # Try to extract JSON from the response if it's wrapped in other text
+                json_match = re.search(r'\{.*\}', quiz_text, re.DOTALL)
+                if json_match:
+                    quiz_data = json.loads(json_match.group())
+                    logger.info(f"📋 Found and parsed JSON from text")
+                else:
+                    raise ValueError("No JSON found in response")
             
-            # Split by "Question:" to find individual questions
-            questions_text = re.split(r'Question:\s*', quiz_text)
-            questions_text = [q.strip() for q in questions_text if q.strip()]
+            questions = quiz_data.get('questions', [])
             
-            logger.info(f"📊 Found {len(questions_text)} question blocks")
-            
+            # Convert to our API format
             formatted_questions = []
-            
-            for i, question_text in enumerate(questions_text[:num_questions]):
-                logger.info(f"🔍 Parsing question {i+1}: {question_text[:100]}...")
-                
-                # Extract question text (before options)
-                question_match = re.match(r'^([^A-Z]+)', question_text)
-                question_content = question_match.group(1).strip() if question_match else "What did you learn?"
-                
-                # Extract options (A) B) C) D))
-                options = []
-                option_pattern = r'([A-D])\)\s*([^A-D]+?)(?=[A-D]\)|Answer:)'
-                option_matches = re.findall(option_pattern, question_text, re.DOTALL)
-                
-                for j, (letter, text) in enumerate(option_matches):
-                    options.append({
-                        "id": letter.lower(),
-                        "text": text.strip()
-                    })
-                
-                # Extract correct answer
-                answer_match = re.search(r'Answer:\s*([A-D])', question_text)
-                correct_answer = answer_match.group(1).lower() if answer_match else "a"
-                
-                # Extract explanation
-                explanation_match = re.search(r'Explanation:\s*([^Question:]+)', question_text, re.DOTALL)
-                explanation = explanation_match.group(1).strip() if explanation_match else "No explanation provided."
-                
+            for i, q in enumerate(questions[:num_questions]):
                 formatted_questions.append({
                     "id": f"q{i+1}",
-                    "question": question_content,
-                    "options": options,
-                    "correctAnswerId": correct_answer,
-                    "explanation": explanation
+                    "question": q.get("question", ""),
+                    "options": q.get("options", []),
+                    "correctAnswerId": q.get("correctAnswerId", ""),
+                    "explanation": q.get("explanation", "")
                 })
-                
-                logger.info(f"✅ Parsed question {i+1}: {question_content[:50]}... with {len(options)} options")
             
-            logger.info(f"🎯 Successfully parsed {len(formatted_questions)} text format questions")
+            logger.info(f"✅ Successfully parsed {len(formatted_questions)} JSON questions")
             return formatted_questions
-            
+                
         except Exception as e:
-            logger.error(f"❌ Text format parsing failed: {e}")
+            logger.error(f"❌ JSON parsing failed: {e}")
+            # Fallback to a simple quiz structure
             return self._create_fallback_quiz(quiz_text)
+    
     
     def _create_fallback_quiz(self, quiz_text: str) -> List[Dict[str, Any]]:
         """Create a fallback quiz if parsing fails"""
