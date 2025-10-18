@@ -11,6 +11,7 @@ from config import Config
 from services import OpenAIService
 from services.openai_video_service import OpenAIVideoService
 from services import OpenAIService, ElevenLabsService
+from services.mem0_service import Mem0Service
 from models import ChatRequest, ChatResponse, ChatMessageResponse, QuizQuestion
 from utils import generate_user_id
 
@@ -33,6 +34,7 @@ app.add_middleware(
 openai_service = OpenAIService()
 video_service = OpenAIVideoService()
 elevenlabs_service = ElevenLabsService()
+mem0_service = Mem0Service()
 
 # Models are now imported from models package
 
@@ -55,27 +57,43 @@ async def chat_message(
     try:
         logger.info(f"Processing chat message from user {x_user_id}: {chat_request.message.content}")
         
-        # Check if user requested a quiz or video
-        should_generate_quiz = openai_service.should_generate_quiz(chat_request.message.content)
-        should_generate_video = openai_service.should_generate_video(chat_request.message.content)
-        quiz_questions = None
-        video_data = None
-        # Check if this is a quiz request
-        is_quiz_request = openai_service.should_generate_quiz(chat_request.message.content)
-        logger.info(f"Is quiz request: {is_quiz_request}")
+        # Get user learning context from Mem0
+        learning_context = mem0_service.get_learning_context(x_user_id)
+        user_preferences = learning_context["preferences"]
+        user_name = learning_context["user_name"]
+        grade_level = learning_context["grade_level"]
+        language = learning_context["language"]
+        learning_style = learning_context["learning_style"]
         
-        # Generate AI response
-        logger.info(f"Calling generate_chat_response with is_quiz_request={is_quiz_request}")
+        logger.info(f"User context - Name: {user_name}, Grade: {grade_level}, Language: {language}, Learning Style: {learning_style}")
+        
+        # Check if user requested a quiz
+        should_generate_quiz = openai_service.should_generate_quiz(chat_request.message.content)
+        logger.info(f"Is quiz request: {should_generate_quiz}")
+        
+        # Check if video should be generated based on user preferences and message
+        should_generate_video = mem0_service.should_generate_video(x_user_id, chat_request.message.content)
+        logger.info(f"Should generate video: {should_generate_video}")
+        
+        # Check if audio should be generated based on user preferences
+        should_generate_audio = mem0_service.should_generate_audio(x_user_id) or chat_request.requireAudio
+        logger.info(f"Should generate audio: {should_generate_audio}")
+        
+        # Generate AI response with personalization
+        logger.info(f"Calling generate_chat_response with is_quiz_request={should_generate_quiz}")
         ai_response = openai_service.generate_chat_response(
             user_message=chat_request.message.content,
             user_id=x_user_id,
-            is_quiz_request=is_quiz_request
+            is_quiz_request=should_generate_quiz
         )
         logger.info(f"AI response received: {ai_response[:100]}...")
         
+        # Personalize response with user's name
+        ai_response = mem0_service.personalize_response(x_user_id, ai_response)
+        
         # Generate quiz if requested
         quiz_questions = []
-        if is_quiz_request:
+        if should_generate_quiz:
             logger.info("Generating quiz questions...")
             # Extract topic from the message for quiz generation
             topic = chat_request.message.content.lower()
@@ -88,6 +106,8 @@ async def chat_message(
             quiz_questions = openai_service.generate_quiz(topic, "medium", 3)
             logger.info(f"Generated {len(quiz_questions)} quiz questions")
         
+        # Generate video if requested
+        video_data = None
         if should_generate_video:
             logger.info("Generating video for user request")
             try:
@@ -123,7 +143,7 @@ async def chat_message(
         
         # Generate audio if requested
         audio_url = None
-        if chat_request.requireAudio:
+        if should_generate_audio:
             logger.info("Generating audio...")
             audio_base64 = elevenlabs_service.generate_audio(ai_response)
             if audio_base64:
@@ -133,6 +153,24 @@ async def chat_message(
                 logger.warning("Failed to generate audio, falling back to mock URL")
                 audio_url = "https://example.com/mock-audio.mp3"
         
+        # Store session history in Mem0
+        session_id = f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{response_id[:8]}"
+        response_type = "text"
+        if video_data:
+            response_type = "video"
+        elif quiz_questions:
+            response_type = "quiz"
+        elif audio_url:
+            response_type = "audio"
+        
+        mem0_service.store_session_history(
+            user_id=x_user_id,
+            session_id=session_id,
+            user_message=chat_request.message.content,
+            ai_response=ai_response,
+            response_type=response_type
+        )
+        
         # Build response
         response_data = {
             "responses": [
@@ -141,10 +179,16 @@ async def chat_message(
                     "messageId": chat_request.message.id,
                     "content": ai_response,
                     "timestamp": current_timestamp,
-                    "audioUrl": "https://mock-audio.com/response.mp3" if chat_request.requireAudio else None,
+                    "audioUrl": audio_url,
                     "videoUrl": f"/api/v1/video/{video_data['videoId']}" if video_data else None,
                     "video": video_data,
-                    "quiz": quiz_questions
+                    "quiz": quiz_questions,
+                    "userContext": {
+                        "userName": user_name,
+                        "gradeLevel": grade_level,
+                        "language": language,
+                        "learningStyle": learning_style
+                    }
                 }
             ]
         }
@@ -218,6 +262,82 @@ async def list_videos():
     except Exception as e:
         logger.error(f"Error listing videos: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error listing videos: {str(e)}")
+
+# User preferences endpoints
+@app.post("/api/v1/user/preferences")
+async def set_user_preferences(
+    preferences: dict,
+    x_user_id: str = Header(..., alias="X-User-ID")
+):
+    """Set user preferences"""
+    try:
+        result = mem0_service.store_user_preferences(x_user_id, preferences)
+        
+        if result["success"]:
+            return {
+                "success": True,
+                "message": "User preferences updated successfully",
+                "preferences": preferences
+            }
+        else:
+            raise HTTPException(status_code=500, detail=result["error"])
+            
+    except Exception as e:
+        logger.error(f"Error setting user preferences: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error setting user preferences: {str(e)}")
+
+@app.get("/api/v1/user/preferences")
+async def get_user_preferences(
+    x_user_id: str = Header(..., alias="X-User-ID")
+):
+    """Get user preferences"""
+    try:
+        preferences = mem0_service.get_user_preferences(x_user_id)
+        
+        return {
+            "success": True,
+            "preferences": preferences
+        }
+            
+    except Exception as e:
+        logger.error(f"Error getting user preferences: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error getting user preferences: {str(e)}")
+
+@app.get("/api/v1/user/context")
+async def get_user_context(
+    x_user_id: str = Header(..., alias="X-User-ID")
+):
+    """Get comprehensive user learning context"""
+    try:
+        context = mem0_service.get_learning_context(x_user_id)
+        
+        return {
+            "success": True,
+            "context": context
+        }
+            
+    except Exception as e:
+        logger.error(f"Error getting user context: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error getting user context: {str(e)}")
+
+@app.get("/api/v1/user/session-history")
+async def get_session_history(
+    x_user_id: str = Header(..., alias="X-User-ID"),
+    limit: int = 5
+):
+    """Get user session history"""
+    try:
+        history = mem0_service.get_session_history(x_user_id, limit)
+        
+        return {
+            "success": True,
+            "sessionHistory": history,
+            "count": len(history)
+        }
+            
+    except Exception as e:
+        logger.error(f"Error getting session history: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error getting session history: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn
