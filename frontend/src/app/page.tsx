@@ -13,6 +13,8 @@ export default function ChatInterface() {
   const [typingText, setTypingText] = useState('');
   const [isWaitingForResponse, setIsWaitingForResponse] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
+  const [currentVideoUrl, setCurrentVideoUrl] = useState<string | null>(null);
+  const [currentAudioUrl, setCurrentAudioUrl] = useState<string | null>(null);
   const [userId, setUserId] = useState<string>('');
   const [apiClient, setApiClient] = useState<ApiClient | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -55,6 +57,7 @@ export default function ChatInterface() {
             }]);
             setCurrentMessage('');
             setTypingText('');
+            // Keep video and audio URLs - don't clear them
             setIsWaitingForResponse(false);
             setIsTransitioning(false);
           }, 1000);
@@ -80,6 +83,9 @@ export default function ChatInterface() {
 
     const userMessage = currentMessage.trim();
     setCurrentMessage('');
+    // Clear previous video/audio when sending new message
+    setCurrentVideoUrl(null);
+    setCurrentAudioUrl(null);
     setIsWaitingForResponse(true);
 
     try {
@@ -93,6 +99,8 @@ export default function ChatInterface() {
       const data = await apiClient.sendMessage(message, false);
       // Start typing animation for the response
       setTypingText(data.response.content);
+      setCurrentVideoUrl(data.videoUrl || null);
+      setCurrentAudioUrl(data.audioUrl || null);
       setIsTyping(true);
     } catch (error) {
       console.error('Error sending message:', error);
@@ -128,12 +136,44 @@ export default function ChatInterface() {
           <div className="text-center mb-8">
             <div className={`font-light leading-relaxed max-w-5xl mx-auto transition-all duration-1000 ease-in-out ${
               isTyping 
-                ? 'text-5xl text-gray-800' 
+                ? (currentVideoUrl ? 'text-3xl text-gray-800' : 'text-5xl text-gray-800')
                 : 'text-lg text-gray-600'
             }`}>
               {currentMessage}
               {isTyping && <span className="animate-pulse text-gray-500">|</span>}
             </div>
+          </div>
+        )}
+
+        {/* Persistent Video Player */}
+        {currentVideoUrl && (
+          <div className="mb-8 max-w-7xl mx-auto">
+            <div className="relative w-full" style={{ aspectRatio: '16/9', minHeight: '500px' }}>
+              <video 
+                src={currentVideoUrl} 
+                autoPlay 
+                muted
+                loop
+                playsInline
+                className="absolute inset-0 w-full h-full object-cover rounded-[2rem] shadow-2xl"
+              >
+                Your browser does not support the video tag.
+              </video>
+            </div>
+          </div>
+        )}
+
+        {/* Persistent Audio Player */}
+        {currentAudioUrl && (
+          <div className="mb-4 max-w-2xl mx-auto">
+            <audio 
+              src={currentAudioUrl} 
+              controls 
+              autoPlay
+              className="w-full"
+            >
+              Your browser does not support the audio tag.
+            </audio>
           </div>
         )}
 

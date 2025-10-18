@@ -65,27 +65,13 @@ async def chat_message(
                 logger.warning(f"Failed to generate quiz: {str(quiz_error)}")
                 # Continue without quiz if generation fails
         
-        # Generate response ID and timestamp
-        response_id = str(uuid.uuid4())
-        current_timestamp = datetime.now().isoformat()
-        
-        # Build response
-        response_data = {
-            "responses": [
-                {
-                    "id": response_id,
-                    "messageId": chat_request.message.id,
-                    "content": ai_response,
-                    "timestamp": current_timestamp,
-                    "audioUrl": "https://mock-audio.com/response.mp3" if chat_request.requireAudio else None,
-                    "videoUrl": "https://mock-video.com/response.mp4" if "video" in chat_request.message.content.lower() else None,
-                    "quiz": quiz_questions
-                }
-            ]
-        }
-        
-        logger.info(f"Successfully generated response for user {x_user_id}")
-        return response_data
+        return ChatMessageResponse(
+            success=True,
+            response=response,
+            audioUrl="http://localhost:3000/sample-video.mp3",  # Mock audio URL
+            videoUrl="http://localhost:3000/sample-video.mp4",  # Your sample video
+            quiz=quiz
+        )
         
     except Exception as e:
         logger.error(f"Error processing chat message: {str(e)}")
