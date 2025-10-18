@@ -15,6 +15,8 @@ from services.openai_video_service import OpenAIVideoService
 from services import OpenAIService, ElevenLabsService
 from services.mem0_service import Mem0Service
 from services.supabase_mcp_service import SupabaseMCPService
+from services.supabase_user_preferences_service import SupabaseUserPreferencesService
+from services.intelligent_preference_extraction_service import IntelligentPreferenceExtractionService
 from services.pdf_service import PDFService
 from services.user_onboarding_service import UserOnboardingService
 from models import ChatRequest, ChatResponse, ChatMessageResponse, QuizQuestion, FileUploadResponse, ChatMessage
@@ -41,6 +43,8 @@ video_service = OpenAIVideoService()
 elevenlabs_service = ElevenLabsService()
 mem0_service = Mem0Service()
 supabase_mcp_service = SupabaseMCPService()
+supabase_preferences_service = SupabaseUserPreferencesService()
+preference_extraction_service = IntelligentPreferenceExtractionService()
 pdf_service = PDFService()
 onboarding_service = UserOnboardingService()
 
@@ -137,16 +141,16 @@ async def set_user_preferences(
 ):
     """Set user preferences"""
     try:
-        result = mem0_service.store_user_preferences(x_user_id, preferences)
+        success = supabase_preferences_service.store_user_preferences(x_user_id, preferences)
         
-        if result["success"]:
+        if success:
             return {
                 "success": True,
                 "message": "User preferences updated successfully",
                 "preferences": preferences
             }
         else:
-            raise HTTPException(status_code=500, detail=result["error"])
+            raise HTTPException(status_code=500, detail="Failed to store user preferences")
             
     except Exception as e:
         logger.error(f"Error setting user preferences: {str(e)}")
@@ -158,7 +162,7 @@ async def get_user_preferences(
 ):
     """Get user preferences"""
     try:
-        preferences = mem0_service.get_user_preferences(x_user_id)
+        preferences = supabase_preferences_service.get_user_preferences(x_user_id)
         
         return {
             "success": True,
@@ -175,7 +179,16 @@ async def get_user_context(
 ):
     """Get comprehensive user learning context"""
     try:
-        context = mem0_service.get_learning_context(x_user_id)
+        preferences = supabase_preferences_service.get_user_preferences(x_user_id)
+        
+        context = {
+            "user_name": preferences.get("name", "Student"),
+            "grade_level": preferences.get("grade_level", "middle"),
+            "language": preferences.get("language", "en"),
+            "learning_style": preferences.get("learning_style", "reading"),
+            "preferred_subjects": preferences.get("preferred_subjects", []),
+            "preferences": preferences
+        }
         
         return {
             "success": True,
@@ -537,13 +550,26 @@ async def chat_message(
             except Exception as audiobook_error:
                 logger.error(f"Error generating audiobook: {str(audiobook_error)}")
         
-        # Get user learning context from Mem0
-        learning_context = mem0_service.get_learning_context(x_user_id)
-        user_preferences = learning_context["preferences"]
-        user_name = learning_context["user_name"]
-        grade_level = learning_context["grade_level"]
-        language = learning_context["language"]
-        learning_style = learning_context["learning_style"]
+        # Get user preferences from Supabase
+        user_preferences = supabase_preferences_service.get_user_preferences(x_user_id)
+        user_name = user_preferences.get("name", "Student")
+        grade_level = user_preferences.get("grade_level", "middle")
+        language = user_preferences.get("language", "en")
+        learning_style = user_preferences.get("learning_style", "reading")
+        
+        # Extract any new preferences from the current message using OpenAI
+        extracted_preferences = preference_extraction_service.extract_preferences_from_message(message, user_preferences)
+        
+        # Merge extracted preferences with existing ones
+        if extracted_preferences:
+            user_preferences = preference_extraction_service.merge_preferences(user_preferences, extracted_preferences)
+            # Update preferences in Supabase
+            supabase_preferences_service.update_user_preferences(x_user_id, extracted_preferences)
+            # Update local variables
+            user_name = user_preferences.get("name", user_name)
+            grade_level = user_preferences.get("grade_level", grade_level)
+            language = user_preferences.get("language", language)
+            learning_style = user_preferences.get("learning_style", learning_style)
         
         # Check if user needs onboarding (but skip if audiobook was generated)
         needs_onboarding = onboarding_service.should_start_onboarding(user_preferences) and not audiobook_chunks
@@ -571,8 +597,8 @@ async def chat_message(
                     onboarding_result["collected_preferences"]
                 )
                 
-                # Save the complete preferences to Mem0
-                mem0_service.store_user_preferences(x_user_id, merged_preferences)
+                # Save the complete preferences to Supabase
+                supabase_preferences_service.store_user_preferences(x_user_id, merged_preferences)
                 
                 # Update local variables with new preferences
                 user_preferences = merged_preferences
@@ -634,11 +660,11 @@ async def chat_message(
         logger.info(f"Is quiz request: {should_generate_quiz}")
         
         # Check if video should be generated based on user preferences and message
-        should_generate_video = mem0_service.should_generate_video(x_user_id, chat_request.message.content)
+        should_generate_video = supabase_preferences_service.should_generate_video(x_user_id, chat_request.message.content)
         logger.info(f"Should generate video: {should_generate_video}")
         
         # Check if audio should be generated based on user preferences
-        should_generate_audio = mem0_service.should_generate_audio(x_user_id) or chat_request.requireAudio
+        should_generate_audio = supabase_preferences_service.should_generate_audio(x_user_id) or chat_request.requireAudio
         logger.info(f"Should generate audio: {should_generate_audio}")
         
         # Check if user is asking for study material recommendations
@@ -744,7 +770,7 @@ async def chat_message(
             logger.info(f"AI response received: {ai_response[:100]}...")
             
             # Personalize response with user's name
-            ai_response = mem0_service.personalize_response(x_user_id, ai_response)
+            ai_response = supabase_preferences_service.personalize_response(x_user_id, ai_response)
         
         # Generate quiz if requested
         quiz_questions = []
