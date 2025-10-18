@@ -55,15 +55,13 @@ export default function ChatInterface() {
           
           // Move message up and change to small text after typing completes
           setTimeout(() => {
-            // Only add to message history if there's no quiz
-            if (!currentQuiz) {
-              setMessages(prev => [...prev, {
-                id: generateUUID(),
-                userId: userId,
-                content: typingText,
-                timestamp: new Date().toISOString()
-              }]);
-            }
+            // Always add to message history - messages should persist
+            setMessages(prev => [...prev, {
+              id: generateUUID(),
+              userId: userId,
+              content: typingText,
+              timestamp: new Date().toISOString()
+            }]);
             setCurrentMessage('');
             setTypingText('');
             // Keep video and audio URLs - don't clear them
@@ -111,7 +109,7 @@ export default function ChatInterface() {
       setTypingText(data.response.content);
       setCurrentVideoUrl(data.videoUrl || null);
       setCurrentAudioUrl(data.audioUrl || null);
-      setCurrentQuiz(data.quiz);
+      setCurrentQuiz(data.quiz && data.quiz.length > 0 ? data.quiz : undefined);
       setIsWaitingForResponse(false); // Stop waiting, start typing
       setIsTyping(true);
     } catch (error) {
@@ -131,15 +129,14 @@ export default function ChatInterface() {
 
   const handlePageClick = () => {
     // Focus input when clicking anywhere on the page
-    if (inputRef.current && !isTyping && !isTransitioning && !isWaitingForResponse && !currentQuiz) {
+    if (inputRef.current && !isTyping && !isTransitioning && !isWaitingForResponse && !(currentQuiz && currentQuiz.length > 0)) {
       inputRef.current.focus();
     }
   };
 
   const clearQuiz = () => {
     setCurrentQuiz(undefined);
-    // Remove the last message from history if it was added during quiz
-    setMessages(prev => prev.slice(0, -1));
+    // Don't remove messages from history - keep them visible
     // Focus input after quiz completion
     setTimeout(() => {
       if (inputRef.current) {
@@ -153,12 +150,12 @@ export default function ChatInterface() {
       {/* Audio Toggle Button - Top Right Corner */}
       <button
         onClick={() => setIsAudioEnabled(!isAudioEnabled)}
-        disabled={isTyping || isTransitioning || isWaitingForResponse || !!currentQuiz}
+        disabled={isTyping || isTransitioning || isWaitingForResponse || (currentQuiz && currentQuiz.length > 0)}
         className={`fixed top-4 right-4 z-50 p-3 rounded-full transition-all duration-200 shadow-lg ${
           isAudioEnabled 
             ? 'bg-blue-500 text-white hover:bg-blue-600' 
             : 'bg-gray-200 text-gray-500 hover:bg-gray-300'
-        } ${isTyping || isTransitioning || isWaitingForResponse || !!currentQuiz ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+        } ${isTyping || isTransitioning || isWaitingForResponse || (currentQuiz && currentQuiz.length > 0) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
         title={isAudioEnabled ? 'Audio enabled - Click to disable' : 'Audio disabled - Click to enable'}
       >
         {isAudioEnabled ? (
@@ -184,7 +181,7 @@ export default function ChatInterface() {
       {/* Main Content */}
       <div className="flex-1 flex flex-col items-center justify-center p-8 relative z-10">
         {/* Messages History - Show only last 2 messages */}
-        {messages.length > 0 && !currentQuiz && (
+        {messages.length > 0 && (
           <div className="w-full max-w-4xl mb-8 space-y-6">
             {messages.slice(-2).map((message, index) => {
               const isOldest = messages.length > 1 && index === 0;
@@ -274,7 +271,7 @@ export default function ChatInterface() {
             onKeyPress={handleKeyPress}
             placeholder=""
             className="text-center text-4xl font-light border-none shadow-none focus:ring-0 focus:border-none bg-transparent py-12 px-6"
-            disabled={isTyping || isTransitioning || isWaitingForResponse || !!currentQuiz}
+            disabled={isTyping || isTransitioning || isWaitingForResponse || (currentQuiz && currentQuiz.length > 0)}
             style={{ fontSize: '2.5rem', lineHeight: '1.4' }}
           />
         </div>
