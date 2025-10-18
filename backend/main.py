@@ -545,8 +545,8 @@ async def chat_message(
         language = learning_context["language"]
         learning_style = learning_context["learning_style"]
         
-        # Check if user needs onboarding
-        needs_onboarding = onboarding_service.should_start_onboarding(user_preferences)
+        # Check if user needs onboarding (but skip if audiobook was generated)
+        needs_onboarding = onboarding_service.should_start_onboarding(user_preferences) and not audiobook_chunks
         logger.info(f"User needs onboarding: {needs_onboarding}")
         
         if needs_onboarding:
