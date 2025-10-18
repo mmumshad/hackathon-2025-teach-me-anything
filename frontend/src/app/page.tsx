@@ -24,6 +24,7 @@ export default function ChatInterface() {
   const [currentVideoUrl, setCurrentVideoUrl] = useState<string | null>(null);
   const [currentVideoId, setCurrentVideoId] = useState<string | null>(null);
   const [isVideoGenerating, setIsVideoGenerating] = useState(false);
+  const [currentResponseType, setCurrentResponseType] = useState<'video' | 'quiz' | 'text' | 'audiobook' | null>(null);
   const [currentAudioUrl, setCurrentAudioUrl] = useState<string | null>(null);
   const [currentQuiz, setCurrentQuiz] = useState<ChatResponse['quiz']>(undefined);
   const [userId, setUserId] = useState<string>('');
@@ -162,7 +163,17 @@ export default function ChatInterface() {
         if (videoStatus.status === 'completed') {
           // Video is ready, get the video URL
           const videoUrl = apiClient.getVideoUrl(currentVideoId);
-          setCurrentVideoUrl(videoUrl);
+          console.log('🎬 DEBUG: Video generation completed, setting URL:', videoUrl);
+          console.log('🎬 DEBUG: Current quiz state when video completes:', !!currentQuiz);
+          
+          // Only set video URL if current response type is video
+          if (currentResponseType === 'video') {
+            console.log('🎬 DEBUG: Current response type is video - setting video URL');
+            setCurrentVideoUrl(videoUrl);
+          } else {
+            console.log('🎬 DEBUG: Current response type is', currentResponseType, '- NOT setting video URL');
+          }
+          
           setIsVideoGenerating(false);
           setCurrentVideoId(null);
         } else if (videoStatus.status === 'failed') {
@@ -186,16 +197,21 @@ export default function ChatInterface() {
   }, [currentVideoId, apiClient, isVideoGenerating]);
 
   const sendMessage = async () => {
+    console.log('🚀 DEBUG: sendMessage called');
+    console.log('🚀 DEBUG: Current state before send:', { currentVideoUrl, currentVideoId, isVideoGenerating, isWaitingForResponse, currentMessage: currentMessage.trim() });
+    
     if (!currentMessage.trim() || isWaitingForResponse || !apiClient) return;
 
     const userMessage = currentMessage.trim();
     setCurrentMessage('');
     // Clear previous video/audio/quiz when sending new message
+    console.log('🚀 DEBUG: Clearing video state at start of sendMessage');
     setCurrentVideoUrl(null);
     setCurrentVideoId(null);
     setIsVideoGenerating(false);
     setCurrentAudioUrl(null);
     setCurrentQuiz(undefined);
+    setCurrentResponseType(null); // Reset response type when sending new message
     setSkipTyping(false); // Reset skip state
     setIsWaitingForResponse(true);
 
@@ -208,20 +224,60 @@ export default function ChatInterface() {
       };
 
       const data = await apiClient.sendMessage(message, isAudioEnabled);
+      
+      // Debug: Print the complete data received from backend
+      console.log('📡 DEBUG: Backend response data:', {
+        hasVideo: !!(data.video && data.video.videoId),
+        videoId: data.video?.videoId,
+        hasQuiz: !!(data.quiz && data.quiz.length > 0),
+        quizLength: data.quiz?.length,
+        hasAudiobook: !!(data.audiobookChunks && data.audiobookChunks.length > 0),
+        audiobookChunksLength: data.audiobookChunks?.length,
+        hasAudio: !!data.audioUrl,
+        responseContent: data.response?.content?.substring(0, 100) + '...',
+        fullData: data
+      });
+      
       // Start typing animation for the response
       setTypingText(data.response.content);
       
-      // Handle video data
+      // Determine response type and handle accordingly
+      let responseType: 'video' | 'quiz' | 'text' | 'audiobook' = 'text';
+      
       if (data.video && data.video.videoId) {
+        responseType = 'video';
+        console.log('🎬 DEBUG: Video response detected:', data.video.videoId);
         setCurrentVideoId(data.video.videoId);
         setIsVideoGenerating(true);
         // Don't set videoUrl yet - will be set when polling completes
+      } else if (data.quiz && data.quiz.length > 0) {
+        responseType = 'quiz';
+        console.log('🧩 DEBUG: Quiz response detected');
+      } else if (data.audiobookChunks && data.audiobookChunks.length > 0) {
+        responseType = 'audiobook';
+        console.log('🎵 DEBUG: Audiobook response detected');
       } else {
-        setCurrentVideoUrl(data.videoUrl || null);
+        console.log('📝 DEBUG: Text response detected');
+      }
+      
+      // Set the current response type
+      setCurrentResponseType(responseType);
+      
+      // Clear video state if not a video response
+      if (responseType !== 'video') {
+        console.log('🎬 DEBUG: Not a video response - clearing video state');
+        setCurrentVideoUrl(null);
+        setCurrentVideoId(null);
+        setIsVideoGenerating(false);
       }
       
       setCurrentAudioUrl(data.audioUrl || null);
-      setCurrentQuiz(data.quiz && data.quiz.length > 0 ? data.quiz : undefined);
+      
+      // Debug quiz handling
+      console.log('🧩 DEBUG: Quiz data received:', data.quiz);
+      const quizToSet = data.quiz && data.quiz.length > 0 ? data.quiz : undefined;
+      console.log('🧩 DEBUG: Setting quiz to:', quizToSet);
+      setCurrentQuiz(quizToSet);
       setIsWaitingForResponse(false); // Stop waiting, start typing
       setIsTyping(true);
     } catch (error) {
@@ -255,7 +311,15 @@ export default function ChatInterface() {
   };
 
   const clearQuiz = () => {
+    console.log('🧩 DEBUG: clearQuiz called - current state:', { currentVideoUrl, currentVideoId, isVideoGenerating, currentResponseType });
     setCurrentQuiz(undefined);
+    setCurrentResponseType(null); // Reset response type when quiz is completed
+    // Clear video state when quiz is completed
+    console.log('🧩 DEBUG: Clearing video state in clearQuiz');
+    setCurrentVideoUrl(null);
+    setCurrentVideoId(null);
+    setIsVideoGenerating(false);
+    setCurrentAudioUrl(null);
     // Don't remove messages from history - keep them visible
     // Focus input after quiz completion
     setTimeout(() => {
@@ -267,6 +331,14 @@ export default function ChatInterface() {
 
   const handleAudiobookUpload = async (file: File) => {
     if (!apiClient) return;
+
+    // Clear video state when starting audiobook generation
+    setCurrentVideoUrl(null);
+    setCurrentVideoId(null);
+    setIsVideoGenerating(false);
+    setCurrentAudioUrl(null);
+    setCurrentQuiz(undefined);
+    setCurrentResponseType(null); // Reset response type when starting audiobook
 
     setIsAudiobookGenerating(true);
     // Don't hide the upload card - keep it visible to show progress
@@ -427,7 +499,7 @@ export default function ChatInterface() {
         )}
 
         {/* Persistent Video Player */}
-        {(currentVideoUrl || isVideoGenerating) && (
+        {(currentVideoUrl || isVideoGenerating) && currentResponseType === 'video' && (
           <div className="mb-8 max-w-7xl mx-auto">
             <div className="relative w-full" style={{ aspectRatio: '16/9', minHeight: '500px' }}>
               {currentVideoUrl ? (

@@ -16,4 +16,5 @@ dependencies = [
     "requests==2.31.0",
     "supabase==2.8.0",
     "PyPDF2==3.0.1",
+    "colorama==0.4.6",
 ]

@@ -58,9 +58,9 @@ class UserOnboardingService:
         if not language:
             return True
             
-        # Learning style must be present and not default
+        # Learning style must be present (but can be any valid learning style)
         learning_style = user_preferences.get("learning_style")
-        if not learning_style or learning_style == default_prefs.get("learning_style"):
+        if not learning_style:
             return True
                 
         return False
@@ -127,6 +127,17 @@ class UserOnboardingService:
         message_lower = message.lower().strip()
         
         if current_step == OnboardingStep.NAME:
+            # Only extract name if message contains clear name introduction patterns
+            # Skip if message looks like a learning request rather than name introduction
+            learning_request_indicators = [
+                "teach", "show", "explain", "help", "learn", "about", "what", "how", "why",
+                "atoms", "molecules", "chemistry", "physics", "biology", "math", "science"
+            ]
+            
+            if any(indicator in message_lower for indicator in learning_request_indicators):
+                # This looks like a learning request, not a name introduction
+                return None
+            
             # Extract name from message - look for "my name is" or "I'm" patterns
             if "my name is" in message_lower:
                 # Extract name after "my name is"
@@ -152,8 +163,17 @@ class UserOnboardingService:
             # Fallback: extract first meaningful word (but be more selective)
             words = message.split()
             for word in words:
-                # Skip common words and greetings
-                if word.lower() not in ["hi", "hello", "hey", "my", "name", "is", "i'm", "i", "am", "want", "to", "learn", "about", "chemistry", "physics", "math", "science", "!", "?", ".", ","]:
+                # Skip common words, greetings, and educational terms
+                skip_words = [
+                    "hi", "hello", "hey", "my", "name", "is", "i'm", "i", "am", "want", "to", "learn", "about",
+                    "teach", "show", "explain", "help", "tell", "give", "make", "create", "demonstrate",
+                    "chemistry", "physics", "math", "science", "biology", "history", "literature", "art", "music",
+                    "atoms", "molecules", "elements", "compounds", "reactions", "equations", "formulas",
+                    "me", "us", "you", "them", "this", "that", "these", "those", "what", "how", "why", "when", "where",
+                    "!", "?", ".", ",", ":", ";", "-", "_", "(", ")", "[", "]", "{", "}"
+                ]
+                
+                if word.lower() not in skip_words:
                     # Clean the word (remove punctuation)
                     clean_name = ''.join(c for c in word if c.isalnum())
                     if len(clean_name) > 1 and clean_name.lower() not in ["hi", "hello", "hey"]:  # Must be at least 2 characters and not a greeting
@@ -281,7 +301,7 @@ class UserOnboardingService:
         """Get default user preferences"""
         return {
             "name": "Student",
-            "grade": "middle",
+            "grade_level": "middle",  # Changed from "grade" to "grade_level" to match Supabase
             "language": "en",
             "learning_style": "reading",
             "preferred_subjects": [],

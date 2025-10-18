@@ -22,8 +22,49 @@ from services.user_onboarding_service import UserOnboardingService
 from models import ChatRequest, ChatResponse, ChatMessageResponse, QuizQuestion, FileUploadResponse, ChatMessage
 from utils import generate_user_id
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Configure colored logging
+import sys
+from colorama import init, Fore, Style
+
+# Initialize colorama for cross-platform colored output
+init(autoreset=True)
+
+class ColoredFormatter(logging.Formatter):
+    """Custom formatter to add colors to log levels"""
+    
+    # Color mapping for different log levels
+    COLORS = {
+        'DEBUG': Fore.CYAN,
+        'INFO': Fore.GREEN,
+        'WARNING': Fore.YELLOW,
+        'ERROR': Fore.RED,
+        'CRITICAL': Fore.RED + Style.BRIGHT,
+    }
+    
+    def format(self, record):
+        # Get the original formatted message
+        log_message = super().format(record)
+        
+        # Add color based on log level
+        color = self.COLORS.get(record.levelname, '')
+        if color:
+            log_message = f"{color}{log_message}{Style.RESET_ALL}"
+        
+        return log_message
+
+# Configure logging with colored output
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+
+# Apply colored formatter to all handlers
+for handler in logging.root.handlers:
+    handler.setFormatter(ColoredFormatter())
+
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="TechMeAnything API", version="1.0.0")
@@ -50,6 +91,7 @@ onboarding_service = UserOnboardingService()
 
 # In-memory storage for onboarding session preferences (temporary)
 onboarding_sessions = {}
+
 
 
 # File upload configuration
@@ -754,8 +796,17 @@ async def chat_message(
             chat_history = []
             if supabase_mcp_service.is_available():
                 try:
-                    chat_history = supabase_mcp_service.get_user_chat_history(x_user_id, limit=5)
+                    # Get ALL chat history to capture all educational content
+                    chat_history = supabase_mcp_service.get_user_chat_history(x_user_id, limit=None)
                     logger.info(f"Retrieved {len(chat_history)} previous messages for context")
+                    
+                    # Debug: Log the actual chat history content
+                    logger.info(f"🔍 CHAT HISTORY DEBUG - All messages ({len(chat_history)} total):")
+                    for i, msg in enumerate(chat_history[-10:]):  # Show last 10 messages
+                        role = msg.get("role", "unknown")
+                        content = msg.get("content", "")[:100]  # First 100 chars
+                        logger.info(f"  {i+1}. {role}: {content}...")
+                        
                 except Exception as history_error:
                     logger.warning(f"Failed to get chat history: {str(history_error)}")
                     chat_history = []
@@ -776,15 +827,8 @@ async def chat_message(
         quiz_questions = []
         if should_generate_quiz:
             logger.info("Generating quiz questions...")
-            # Extract topic from the message for quiz generation
-            topic = chat_request.message.content.lower()
-            # Remove common quiz request words to get the topic
-            for word in ["quiz", "test", "question", "assessment", "check my understanding", "test me", "questions"]:
-                topic = topic.replace(word, "").strip()
-            if not topic:
-                topic = "general knowledge"
-            
-            quiz_questions = openai_service.generate_quiz(topic, "medium", 3)
+            # Pass chat history directly to AI for context-aware quiz generation
+            quiz_questions = openai_service.generate_quiz_from_context(chat_history, "medium", 3)
             logger.info(f"Generated {len(quiz_questions)} quiz questions")
         
         # Generate video if requested

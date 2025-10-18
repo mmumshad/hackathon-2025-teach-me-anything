@@ -574,25 +574,39 @@ class SupabaseMCPService:
     
     def get_user_chat_history(self, user_id: str, limit: int = 5) -> List[Dict[str, Any]]:
         """
-        Get recent chat history for a user from Supabase
+        Get chat history for a user from Supabase
         
         Args:
             user_id: The user ID to get chat history for
-            limit: Number of recent conversations to retrieve (default: 5)
+            limit: Number of recent conversations to retrieve (default: 5). Use None for all records.
             
         Returns:
-            List of recent chat conversations with user messages and AI responses
+            List of chat conversations with user messages and AI responses
         """
         try:
             logger.info(f"Getting chat history for user {user_id}, limit: {limit}")
             
-            # Query user_learning_history table for recent conversations
-            response = self.supabase.table("user_learning_history").select(
+            # Query user_learning_history table for conversations
+            query = self.supabase.table("user_learning_history").select(
                 "question, response, created_at"
-            ).eq("user_id", user_id).order("created_at", desc=True).limit(limit).execute()
+            ).eq("user_id", user_id).order("created_at", desc=True)
+            
+            # Apply limit only if specified
+            if limit is not None:
+                query = query.limit(limit)
+            
+            response = query.execute()
             
             if response.data:
                 logger.info(f"Found {len(response.data)} recent conversations for user {user_id}")
+                
+                # Debug: Log the actual database records
+                logger.info(f"🔍 DATABASE DEBUG - Raw records from user_learning_history:")
+                for i, record in enumerate(response.data):
+                    question = record.get("question", "")[:50]
+                    response_content = record.get("response", "")[:100]
+                    created_at = record.get("created_at", "")
+                    logger.info(f"  {i+1}. Q: {question}... | R: {response_content}... | Time: {created_at}")
                 
                 # Format the chat history for LLM context
                 chat_history = []

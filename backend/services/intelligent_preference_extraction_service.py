@@ -264,6 +264,8 @@ class IntelligentPreferenceExtractionService:
                 if key == "preferred_subjects" and isinstance(value, list):
                     # Merge subject lists
                     existing_subjects = merged.get("preferred_subjects", [])
+                    if existing_subjects is None:
+                        existing_subjects = []
                     merged[key] = list(set(existing_subjects + value))
                 else:
                     merged[key] = value
