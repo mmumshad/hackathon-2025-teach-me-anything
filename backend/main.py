@@ -40,7 +40,7 @@ async def health_check():
     }
 
 # Main chat endpoint
-@app.post("/api/v1/chat/message")
+@app.post("/api/v1/chat/message", response_model=ChatMessageResponse)
 async def chat_message(
     chat_request: ChatRequest,
     x_user_id: str = Header(..., alias="X-User-ID")
