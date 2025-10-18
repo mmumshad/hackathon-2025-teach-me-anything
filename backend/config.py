@@ -26,6 +26,11 @@ class Config:
     # Mem0 Configuration
     MEM0_API_KEY: Optional[str] = os.getenv("MEM0_API_KEY")
     
+    # Supabase Configuration
+    SUPABASE_URL: Optional[str] = os.getenv("SUPABASE_URL")
+    SUPABASE_KEY: Optional[str] = os.getenv("SUPABASE_KEY")
+    SUPABASE_MCP_API_KEY: Optional[str] = os.getenv("SUPABASE_MCP_API_KEY")
+    
     # Server Configuration
     DEBUG: bool = os.getenv("DEBUG", "False").lower() == "true"
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
