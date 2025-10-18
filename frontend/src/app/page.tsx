@@ -12,6 +12,7 @@ export default function ChatInterface() {
   const [isTyping, setIsTyping] = useState(false);
   const [typingText, setTypingText] = useState('');
   const [isWaitingForResponse, setIsWaitingForResponse] = useState(false);
+  const [isTransitioning, setIsTransitioning] = useState(false);
   const [userId, setUserId] = useState<string>('');
   const [apiClient, setApiClient] = useState<ApiClient | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -40,7 +41,10 @@ export default function ChatInterface() {
           currentIndex++;
         } else {
           clearInterval(interval);
+          // Start transition immediately
+          setIsTransitioning(true);
           setIsTyping(false);
+          
           // Move message up and change to small text after typing completes
           setTimeout(() => {
             setMessages(prev => [...prev, {
@@ -52,6 +56,7 @@ export default function ChatInterface() {
             setCurrentMessage('');
             setTypingText('');
             setIsWaitingForResponse(false);
+            setIsTransitioning(false);
           }, 1000);
         }
       }, 50); // Typing speed
@@ -62,13 +67,13 @@ export default function ChatInterface() {
 
   // Auto-focus input when not typing
   useEffect(() => {
-    if (!isTyping && !isWaitingForResponse && inputRef.current) {
+    if (!isTyping && !isWaitingForResponse && !isTransitioning && inputRef.current) {
       // Small delay to ensure DOM is ready
       setTimeout(() => {
         inputRef.current?.focus();
       }, 100);
     }
-  }, [isTyping, isWaitingForResponse]);
+  }, [isTyping, isWaitingForResponse, isTransitioning]);
 
   const sendMessage = async () => {
     if (!currentMessage.trim() || isWaitingForResponse || !apiClient) return;
@@ -119,17 +124,21 @@ export default function ChatInterface() {
         )}
 
         {/* Current Typing Message */}
-        {isTyping && (
+        {(isTyping || isTransitioning) && (
           <div className="text-center mb-8">
-            <div className="text-5xl font-light text-gray-800 leading-relaxed max-w-5xl mx-auto">
+            <div className={`font-light leading-relaxed max-w-5xl mx-auto transition-all duration-1000 ease-in-out ${
+              isTyping 
+                ? 'text-5xl text-gray-800' 
+                : 'text-lg text-gray-600'
+            }`}>
               {currentMessage}
-              <span className="animate-pulse text-gray-500">|</span>
+              {isTyping && <span className="animate-pulse text-gray-500">|</span>}
             </div>
           </div>
         )}
 
         {/* Input Field */}
-        {!isTyping && (
+        {!isTyping && !isTransitioning && (
           <div className="w-full max-w-5xl">
             <Input
               ref={inputRef}
