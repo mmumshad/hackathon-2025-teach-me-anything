@@ -62,7 +62,7 @@ class OpenAIService:
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
-                max_tokens=Config.MAX_RESPONSE_LENGTH,
+                max_tokens=80 if not is_quiz_request else Config.MAX_RESPONSE_LENGTH,
                 temperature=0.7
             )
             
