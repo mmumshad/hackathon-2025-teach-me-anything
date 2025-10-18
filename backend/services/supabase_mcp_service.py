@@ -1,6 +1,6 @@
 """
-Supabase MCP Service for Knowledge Graph Management
-Integrates with Smithery's Supabase MCP server for advanced database operations
+Supabase Service for Knowledge Graph Management
+Direct Supabase client integration for database operations
 """
 
 import asyncio
@@ -9,21 +9,20 @@ from typing import Dict, List, Optional, Any
 from datetime import datetime
 from urllib.parse import urlencode
 
-from mcp import ClientSession
-from mcp.client.streamable_http import streamablehttp_client
+# MCP imports removed to resolve dependency conflict
 from supabase import create_client, Client
 from config import Config
 
 logger = logging.getLogger(__name__)
 
 class SupabaseMCPService:
-    """Service class for Supabase MCP integration and knowledge graph management"""
+    """Service class for Supabase direct client integration and knowledge graph management"""
     
     def __init__(self):
-        """Initialize Supabase MCP service"""
+        """Initialize Supabase service"""
         self.supabase_url = Config.SUPABASE_URL
         self.supabase_key = Config.SUPABASE_KEY
-        self.mcp_api_key = Config.SUPABASE_MCP_API_KEY
+        # MCP API key removed - using direct Supabase client only
         
         # Initialize regular Supabase client
         if self.supabase_url and self.supabase_key:
@@ -33,111 +32,19 @@ class SupabaseMCPService:
             self.supabase = None
             logger.warning("Supabase credentials not found. Supabase features will be disabled.")
         
-        # MCP client will be initialized when needed
-        self.mcp_session = None
+        # MCP client removed to resolve dependency conflict
     
     def is_available(self) -> bool:
         """Check if Supabase service is available"""
         return self.supabase is not None
     
-    async def _get_mcp_session(self) -> ClientSession:
-        """Get or create MCP session"""
-        if not self.mcp_api_key:
-            raise ValueError("Supabase MCP API key not configured")
-        
-        if self.mcp_session is None:
-            # Construct server URL with authentication
-            base_url = "https://server.smithery.ai/supabase/mcp"
-            params = {"api_key": self.mcp_api_key}
-            url = f"{base_url}?{urlencode(params)}"
-            
-            # Create MCP client
-            read, write, _ = await streamablehttp_client(url).__aenter__()
-            self.mcp_session = ClientSession(read, write)
-            await self.mcp_session.initialize()
-            
-            logger.info("Supabase MCP session initialized successfully")
-        
-        return self.mcp_session
+    # MCP session method removed to resolve dependency conflict
     
-    async def list_available_tools(self) -> List[str]:
-        """List available MCP tools"""
-        try:
-            session = await self._get_mcp_session()
-            tools_result = await session.list_tools()
-            tool_names = [tool.name for tool in tools_result.tools]
-            logger.info(f"Available MCP tools: {tool_names}")
-            return tool_names
-        except Exception as e:
-            logger.error(f"Error listing MCP tools: {str(e)}")
-            return []
+    # MCP tools method removed to resolve dependency conflict
     
-    async def search_docs(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
-        """Search Supabase documentation using MCP"""
-        try:
-            session = await self._get_mcp_session()
-            
-            # Call the search_docs tool
-            result = await session.call_tool(
-                "search_docs",
-                arguments={
-                    "query": query,
-                    "limit": limit
-                }
-            )
-            
-            # Parse results
-            docs = []
-            if result.content:
-                for content in result.content:
-                    if hasattr(content, 'text'):
-                        # Parse the text content (assuming it's JSON)
-                        import json
-                        try:
-                            data = json.loads(content.text)
-                            if 'nodes' in data:
-                                for node in data['nodes']:
-                                    docs.append({
-                                        'title': node.get('title', ''),
-                                        'href': node.get('href', ''),
-                                        'content': node.get('content', '')[:500] + '...' if len(node.get('content', '')) > 500 else node.get('content', '')
-                                    })
-                        except json.JSONDecodeError:
-                            logger.warning("Failed to parse MCP search results")
-            
-            return docs
-            
-        except Exception as e:
-            logger.error(f"Error searching Supabase docs: {str(e)}")
-            return []
+    # MCP search_docs method removed to resolve dependency conflict
     
-    async def list_projects(self) -> List[Dict[str, Any]]:
-        """List Supabase projects using MCP"""
-        try:
-            session = await self._get_mcp_session()
-            
-            result = await session.call_tool(
-                "list_projects",
-                arguments={}
-            )
-            
-            projects = []
-            if result.content:
-                for content in result.content:
-                    if hasattr(content, 'text'):
-                        import json
-                        try:
-                            data = json.loads(content.text)
-                            if 'nodes' in data:
-                                projects.extend(data['nodes'])
-                        except json.JSONDecodeError:
-                            logger.warning("Failed to parse MCP projects list")
-            
-            return projects
-            
-        except Exception as e:
-            logger.error(f"Error listing Supabase projects: {str(e)}")
-            return []
+    # MCP list_projects method removed to resolve dependency conflict
     
     # Knowledge Graph Management Methods
     
@@ -457,7 +364,9 @@ class SupabaseMCPService:
             "i recommend", "i suggest", "great book", "amazing video", "check out",
             "you should read", "found this", "loved this", "this helped me", 
             "worth reading", "worth watching", "must read", "must watch", 
-            "highly recommend", "definitely read", "try this", "this is good"
+            "highly recommend", "definitely read", "try this", "this is good",
+            "would like to recommend", "would like to suggest", "want to recommend",
+            "want to suggest", "reccomend", "recomend"  # Handle common typos
         ]
         
         # Check if message contains recommendation keywords
@@ -466,12 +375,12 @@ class SupabaseMCPService:
         if not has_recommendation_keyword:
             return None
         
-        # Extract material type
+        # Extract material type (check more specific types first)
         material_type = "book"  # default
-        if any(word in message_lower for word in ["video", "youtube", "watch", "channel"]):
-            material_type = "video"
-        elif any(word in message_lower for word in ["podcast", "listen", "episode"]):
+        if any(word in message_lower for word in ["podcast", "listen", "episode"]):
             material_type = "podcast"
+        elif any(word in message_lower for word in ["video", "youtube", "watch", "channel"]):
+            material_type = "video"
         elif any(word in message_lower for word in ["article", "blog", "post", "website"]):
             material_type = "article"
         elif any(word in message_lower for word in ["course", "class", "tutorial"]):
@@ -663,12 +572,4 @@ class SupabaseMCPService:
                 "error": str(e)
             }
     
-    async def close_mcp_session(self):
-        """Close MCP session"""
-        if self.mcp_session:
-            try:
-                await self.mcp_session.close()
-                self.mcp_session = None
-                logger.info("MCP session closed")
-            except Exception as e:
-                logger.error(f"Error closing MCP session: {str(e)}")
+    # MCP close session method removed to resolve dependency conflict
