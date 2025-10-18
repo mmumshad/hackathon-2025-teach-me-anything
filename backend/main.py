@@ -67,38 +67,43 @@ async def health_check():
     }
 
 # Main chat endpoint
-@app.post("/api/v1/chat/message")
+@app.post("/api/v1/chat/message", response_model=ChatMessageResponse)
 async def chat_message(
     chat_request: ChatRequest,
     x_user_id: str = Header(..., alias="X-User-ID")
 ):
     """Process user chat message and return AI response with optional audio/video/quiz"""
     try:
-        # Return static mock response
-        return {
-            "responses": [
-                {
-                    "id": "resp-1",
-                    "messageId": "msg-1", 
-                    "content": "Photosynthesis is the process where plants convert sunlight into energy...",
-                    "timestamp": "2024-01-01T00:00:01Z",
-                    "audioUrl": "https://mock-audio.com/photosynthesis.mp3",
-                    "videoUrl": "https://mock-video.com/photosynthesis.mp4",
-                    "quiz": [
-                        {
-                            "id": "q1",
-                            "question": "What gas do plants absorb?",
-                            "options": [
-                                {"id": "a", "text": "Oxygen"},
-                                {"id": "b", "text": "Carbon Dioxide"}
-                            ],
-                            "correctAnswerId": "b",
-                            "explanation": "Plants absorb carbon dioxide from the atmosphere."
-                        }
-                    ]
-                }
-            ]
-        }
+        # Return static mock response matching API contracts
+        response = ChatResponse(
+            id="resp-1",
+            messageId=chat_request.message.id,
+            content="Photosynthesis is the process where plants convert sunlight into energy. They absorb carbon dioxide from the air and water from the soil, then use sunlight to create glucose and release oxygen.",
+            timestamp=datetime.now().isoformat()
+        )
+        
+        quiz = [
+            QuizQuestion(
+                id="q1",
+                question="What gas do plants absorb during photosynthesis?",
+                options=[
+                    QuizOption(id="a", text="Oxygen"),
+                    QuizOption(id="b", text="Carbon Dioxide"),
+                    QuizOption(id="c", text="Nitrogen"),
+                    QuizOption(id="d", text="Hydrogen")
+                ],
+                correctAnswerId="b",
+                explanation="Plants absorb carbon dioxide from the atmosphere and use it along with water and sunlight to create glucose."
+            )
+        ]
+        
+        return ChatMessageResponse(
+            success=True,
+            response=response,
+            audioUrl="https://mock-audio.com/photosynthesis.mp3",
+            videoUrl="https://mock-video.com/photosynthesis.mp4",
+            quiz=quiz
+        )
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing chat message: {str(e)}")
