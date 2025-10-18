@@ -20,7 +20,7 @@ class OpenAIService:
         self.client = openai.OpenAI(api_key=Config.OPENAI_API_KEY)
         self.model = Config.OPENAI_MODEL
     
-    async def generate_chat_response(
+    def generate_chat_response(
         self, 
         user_message: str, 
         user_id: str,
@@ -57,16 +57,14 @@ class OpenAIService:
             
             # Post-process quiz requests to ensure clean response
             if is_quiz_request:
-                print(f"DEBUG: Original response: {ai_content[:100]}...")  # Debug log
                 ai_content = self._clean_quiz_response(ai_content)
-                print(f"DEBUG: Cleaned response: {ai_content}")  # Debug log
             
             return ai_content
             
         except Exception as e:
             raise Exception(f"Error generating chat response: {str(e)}")
     
-    async def generate_quiz(
+    def generate_quiz(
         self, 
         topic: str, 
         difficulty_level: str = "medium",
