@@ -49,7 +49,7 @@ class OpenAIService:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_message}
                 ],
-                max_tokens=Config.MAX_RESPONSE_LENGTH,
+                max_tokens=80 if not is_quiz_request else Config.MAX_RESPONSE_LENGTH,  # 80 tokens ≈ 50 words
                 temperature=0.7
             )
             
@@ -130,6 +130,8 @@ class OpenAIService:
             7. If asked about videos or visual content, mention that you can generate educational videos
             
             IMPORTANT VIDEO RESPONSE RULE: When users ask for videos or visual content, your response must be EXACTLY: "Creating a video for you now...." Do not customize this message or add any other text.
+            
+            CRITICAL: Keep your response to 50 words or less. Be concise and focused on the key points.
             
             Always be positive, patient, and educational in your responses."""
         
