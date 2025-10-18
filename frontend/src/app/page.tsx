@@ -7,6 +7,7 @@ import { generateUUID, getStoredUserId, storeUserId } from '@/lib/utils';
 import ApiClient, { type ChatMessage, type ChatResponse } from '@/lib/api';
 import { Particles } from '@/components/ui/particles';
 import { Quiz } from '@/components/ui/quiz';
+import LoaderOne from '@/components/ui/loader-one';
 
 export default function ChatInterface() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -110,10 +111,12 @@ export default function ChatInterface() {
       setCurrentVideoUrl(data.videoUrl || null);
       setCurrentAudioUrl(data.audioUrl || null);
       setCurrentQuiz(data.quiz);
+      setIsWaitingForResponse(false); // Stop waiting, start typing
       setIsTyping(true);
     } catch (error) {
       console.error('Error sending message:', error);
       setTypingText('Sorry, I encountered an error. Please try again.');
+      setIsWaitingForResponse(false); // Stop waiting, start typing error message
       setIsTyping(true);
     }
   };
@@ -192,6 +195,13 @@ export default function ChatInterface() {
               {isTyping ? typingDisplay : typingText}
               {isTyping && <span className="animate-pulse text-gray-500">|</span>}
             </div>
+          </div>
+        )}
+
+        {/* Loading Spinner - Show while waiting for backend response */}
+        {isWaitingForResponse && !currentQuiz && (
+          <div className="text-center mb-8">
+            <LoaderOne />
           </div>
         )}
 
