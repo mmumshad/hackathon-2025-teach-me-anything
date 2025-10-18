@@ -132,6 +132,12 @@
   animation: typing 1s infinite;
 }
 
+/* Custom input styling with blue cursor */
+input {
+  caret-color: #3b82f6 !important;
+  caret-shape: block !important;
+}
+
 /* Ensure clean, minimal design */
 body {
   margin: 0;
