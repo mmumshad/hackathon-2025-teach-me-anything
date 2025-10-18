@@ -1,0 +1,65 @@
+{
+  "info": {
+    "name": "TeachMeAnything",
+    "description": "API collection for TechMeAnything hackathon project",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8000/health",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8000",
+          "path": [
+            "health"
+          ]
+        },
+        "description": "Check if the API server is running and healthy"
+      },
+      "response": []
+    },
+    {
+      "name": "Chat Message",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-User-ID",
+            "value": "test-user-123"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"message\": {\n    \"id\": \"msg-1\",\n    \"userId\": \"test-user-123\",\n    \"content\": \"Tell me about photosynthesis\",\n    \"timestamp\": \"2024-01-01T00:00:00Z\"\n  },\n  \"requireAudio\": true\n}"
+        },
+        "url": {
+          "raw": "http://localhost:8000/api/v1/chat/message",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8000",
+          "path": [
+            "api",
+            "v1",
+            "chat",
+            "message"
+          ]
+        },
+        "description": "Send a chat message to the AI and get a response with optional audio/video/quiz"
+      },
+      "response": []
+    }
+  ]
+}
