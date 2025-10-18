@@ -15,6 +15,7 @@ from services.openai_video_service import OpenAIVideoService
 from services import OpenAIService, ElevenLabsService
 from services.mem0_service import Mem0Service
 from services.supabase_mcp_service import SupabaseMCPService
+from services.pdf_service import PDFService
 from models import ChatRequest, ChatResponse, ChatMessageResponse, QuizQuestion, FileUploadResponse, ChatMessage
 from utils import generate_user_id
 
@@ -39,6 +40,8 @@ video_service = OpenAIVideoService()
 elevenlabs_service = ElevenLabsService()
 mem0_service = Mem0Service()
 supabase_mcp_service = SupabaseMCPService()
+pdf_service = PDFService()
+
 
 # File upload configuration
 UPLOAD_DIR = Path("uploads")
@@ -496,6 +499,39 @@ async def chat_message(
         if attached_file_path:
             logger.info(f"Message includes attached file: {attached_file_path}")
         
+        # Generate audiobook if PDF file is attached
+        audiobook_chunks = None
+        audiobook_info = None
+        if attached_file_path and attached_file_path.endswith('.pdf'):
+            logger.info("PDF file detected, generating audiobook...")
+            try:
+                # Extract text from PDF
+                extracted_text = pdf_service.extract_text_from_pdf(attached_file_path)
+                if extracted_text:
+                    # Clean the extracted text
+                    cleaned_text = pdf_service.clean_extracted_text(extracted_text)
+                    logger.info(f"Extracted {len(cleaned_text)} characters from PDF")
+                    
+                    # Generate audiobook using ElevenLabs
+                    audiobook_chunks = elevenlabs_service.generate_audiobook(cleaned_text)
+                    
+                    if audiobook_chunks:
+                        # Get PDF info for audiobook metadata
+                        pdf_info = pdf_service.get_pdf_info(attached_file_path)
+                        audiobook_info = {
+                            "fileName": attached_file.filename,
+                            "totalChunks": len(audiobook_chunks),
+                            "textLength": len(cleaned_text),
+                            "pdfInfo": pdf_info
+                        }
+                        logger.info(f"Successfully generated audiobook with {len(audiobook_chunks)} chunks")
+                    else:
+                        logger.warning("Failed to generate audiobook from PDF")
+                else:
+                    logger.warning("Failed to extract text from PDF")
+            except Exception as audiobook_error:
+                logger.error(f"Error generating audiobook: {str(audiobook_error)}")
+        
         # Get user learning context from Mem0
         learning_context = mem0_service.get_learning_context(x_user_id)
         user_preferences = learning_context["preferences"]
@@ -503,6 +539,7 @@ async def chat_message(
         grade_level = learning_context["grade_level"]
         language = learning_context["language"]
         learning_style = learning_context["learning_style"]
+        
         
         logger.info(f"User context - Name: {user_name}, Grade: {grade_level}, Language: {language}, Learning Style: {learning_style}")
         
@@ -739,6 +776,8 @@ async def chat_message(
                     "content": ai_response,
                     "timestamp": current_timestamp,
                     "audioUrl": audio_url,
+                    "audiobookChunks": audiobook_chunks,
+                    "audiobookInfo": audiobook_info,
                     "videoUrl": f"/api/v1/video/{video_data['videoId']}" if video_data else None,
                     "video": video_data,
                     "quiz": quiz_questions,

@@ -9,3 +9,4 @@ python-multipart==0.0.20
 pydantic==2.12.3
 requests==2.31.0
 supabase==2.8.0
+PyPDF2==3.0.1

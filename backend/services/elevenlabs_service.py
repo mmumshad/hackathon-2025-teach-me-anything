@@ -5,10 +5,11 @@ Handles audio generation using ElevenLabs API
 
 import requests
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 import os
 from io import BytesIO
 import base64
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -153,3 +154,82 @@ class ElevenLabsService:
             "clarity": 0.85,        # Good clarity but more expressive
             "similarity_boost": 0.7 # Allow more voice variation
         }
+    
+    def split_text_for_audiobook(self, text: str, max_chunk_size: int = 4000) -> List[str]:
+        """
+        Split long text into chunks suitable for audiobook generation
+        
+        Args:
+            text: Text to split
+            max_chunk_size: Maximum characters per chunk
+            
+        Returns:
+            List of text chunks
+        """
+        if len(text) <= max_chunk_size:
+            return [text]
+        
+        # Split by sentences first
+        sentences = re.split(r'(?<=[.!?])\s+', text)
+        chunks = []
+        current_chunk = ""
+        
+        for sentence in sentences:
+            # If adding this sentence would exceed the limit, start a new chunk
+            if len(current_chunk) + len(sentence) > max_chunk_size and current_chunk:
+                chunks.append(current_chunk.strip())
+                current_chunk = sentence
+            else:
+                current_chunk += " " + sentence if current_chunk else sentence
+        
+        # Add the last chunk if it's not empty
+        if current_chunk.strip():
+            chunks.append(current_chunk.strip())
+        
+        return chunks
+    
+    def generate_audiobook(self, text: str, voice_id: Optional[str] = None) -> Optional[List[str]]:
+        """
+        Generate audiobook from long text by splitting into chunks and generating audio for each
+        
+        Args:
+            text: Text to convert to audiobook
+            voice_id: Voice ID to use (optional, uses default if not provided)
+            
+        Returns:
+            List of base64 encoded audio chunks or None if failed
+        """
+        if not self.api_key:
+            logger.warning("ElevenLabs API key not found. Audiobook generation disabled.")
+            return None
+        
+        try:
+            # Split text into manageable chunks
+            text_chunks = self.split_text_for_audiobook(text)
+            logger.info(f"Split text into {len(text_chunks)} chunks for audiobook generation")
+            
+            audio_chunks = []
+            
+            for i, chunk in enumerate(text_chunks):
+                logger.info(f"Generating audio for chunk {i+1}/{len(text_chunks)}")
+                
+                # Generate audio for this chunk
+                audio_data = self.generate_audio(chunk, voice_id)
+                
+                if audio_data:
+                    audio_chunks.append(audio_data)
+                else:
+                    logger.error(f"Failed to generate audio for chunk {i+1}")
+                    # Continue with other chunks even if one fails
+                    continue
+            
+            if audio_chunks:
+                logger.info(f"Successfully generated audiobook with {len(audio_chunks)} audio chunks")
+                return audio_chunks
+            else:
+                logger.error("Failed to generate any audio chunks for audiobook")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Unexpected error in audiobook generation: {str(e)}")
+            return None
