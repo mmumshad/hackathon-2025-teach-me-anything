@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { generateUUID, getStoredUserId, storeUserId } from '@/lib/utils';
 import ApiClient, { type ChatMessage, type ChatResponse } from '@/lib/api';
+import { Particles } from '@/components/ui/particles';
 
 export default function ChatInterface() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -117,13 +118,20 @@ export default function ChatInterface() {
   };
 
   return (
-    <div className="min-h-screen bg-white flex flex-col">
+    <div className="min-h-screen bg-white flex flex-col relative">
+      {/* Particles Background */}
+      <Particles
+        className="absolute inset-0 z-0"
+        quantity={50}
+        color="#3b82f6"
+      />
+      
       {/* Main Content */}
-      <div className="flex-1 flex flex-col items-center justify-center p-8">
-        {/* Messages History */}
+      <div className="flex-1 flex flex-col items-center justify-center p-8 relative z-10">
+        {/* Messages History - Show only last 2 messages */}
         {messages.length > 0 && (
           <div className="w-full max-w-4xl mb-8 space-y-6">
-            {messages.map((message) => (
+            {messages.slice(-2).map((message) => (
               <div key={message.id} className="text-lg text-gray-600 text-center leading-relaxed">
                 {message.content}
               </div>
