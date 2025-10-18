@@ -17,7 +17,10 @@ export default function ChatInterface() {
   const [typingDisplay, setTypingDisplay] = useState(''); // Separate state for typing animation
   const [isWaitingForResponse, setIsWaitingForResponse] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
+  const [skipTyping, setSkipTyping] = useState(false);
   const [currentVideoUrl, setCurrentVideoUrl] = useState<string | null>(null);
+  const [currentVideoId, setCurrentVideoId] = useState<string | null>(null);
+  const [isVideoGenerating, setIsVideoGenerating] = useState(false);
   const [currentAudioUrl, setCurrentAudioUrl] = useState<string | null>(null);
   const [currentQuiz, setCurrentQuiz] = useState<ChatResponse['quiz']>(undefined);
   const [userId, setUserId] = useState<string>('');
@@ -75,15 +78,75 @@ export default function ChatInterface() {
     }
   }, [isTyping, typingText]);
 
+  // Skip typing animation effect
+  useEffect(() => {
+    if (skipTyping && isTyping && typingText) {
+      // Immediately show full text and complete the animation
+      setTypingDisplay(typingText);
+      setIsTyping(false);
+      setIsTransitioning(true);
+      
+      setTimeout(() => {
+        // Always add to message history - messages should persist
+        setMessages(prev => [...prev, {
+          id: generateUUID(),
+          userId: userId,
+          content: typingText,
+          timestamp: new Date().toISOString()
+        }]);
+        setCurrentMessage('');
+        setTypingText('');
+        setIsWaitingForResponse(false);
+        setIsTransitioning(false);
+        setSkipTyping(false); // Reset skip state
+      }, 1000);
+    }
+  }, [skipTyping, isTyping, typingText]);
+
   // Auto-focus input when not typing
   useEffect(() => {
-    if (!isTyping && !isWaitingForResponse && !isTransitioning && inputRef.current) {
+    if (!isTyping && !isWaitingForResponse && !isTransitioning && !isVideoGenerating && inputRef.current) {
       // Small delay to ensure DOM is ready
       setTimeout(() => {
         inputRef.current?.focus();
       }, 100);
     }
   }, [isTyping, isWaitingForResponse, isTransitioning]);
+
+  // Video polling effect
+  useEffect(() => {
+    if (!currentVideoId || !apiClient || !isVideoGenerating) return;
+
+    const pollVideoStatus = async () => {
+      try {
+        const statusResponse = await apiClient.checkVideoStatus(currentVideoId);
+        const videoStatus = statusResponse.video;
+
+        if (videoStatus.status === 'completed') {
+          // Video is ready, get the video URL
+          const videoUrl = apiClient.getVideoUrl(currentVideoId);
+          setCurrentVideoUrl(videoUrl);
+          setIsVideoGenerating(false);
+          setCurrentVideoId(null);
+        } else if (videoStatus.status === 'failed') {
+          // Video generation failed
+          console.error('Video generation failed:', videoStatus.error);
+          setIsVideoGenerating(false);
+          setCurrentVideoId(null);
+        } else {
+          // Still generating, poll again in 7 seconds
+          setTimeout(pollVideoStatus, 7000);
+        }
+      } catch (error) {
+        console.error('Error polling video status:', error);
+        // Retry in 5 seconds on error
+        setTimeout(pollVideoStatus, 5000);
+      }
+    };
+
+    // Start polling
+    pollVideoStatus();
+  }, [currentVideoId, apiClient, isVideoGenerating]);
 
   const sendMessage = async () => {
     if (!currentMessage.trim() || isWaitingForResponse || !apiClient) return;
@@ -92,8 +155,11 @@ export default function ChatInterface() {
     setCurrentMessage('');
     // Clear previous video/audio/quiz when sending new message
     setCurrentVideoUrl(null);
+    setCurrentVideoId(null);
+    setIsVideoGenerating(false);
     setCurrentAudioUrl(null);
     setCurrentQuiz(undefined);
+    setSkipTyping(false); // Reset skip state
     setIsWaitingForResponse(true);
 
     try {
@@ -107,7 +173,16 @@ export default function ChatInterface() {
       const data = await apiClient.sendMessage(message, isAudioEnabled);
       // Start typing animation for the response
       setTypingText(data.response.content);
-      setCurrentVideoUrl(data.videoUrl || null);
+      
+      // Handle video data
+      if (data.video && data.video.videoId) {
+        setCurrentVideoId(data.video.videoId);
+        setIsVideoGenerating(true);
+        // Don't set videoUrl yet - will be set when polling completes
+      } else {
+        setCurrentVideoUrl(data.videoUrl || null);
+      }
+      
       setCurrentAudioUrl(data.audioUrl || null);
       setCurrentQuiz(data.quiz && data.quiz.length > 0 ? data.quiz : undefined);
       setIsWaitingForResponse(false); // Stop waiting, start typing
@@ -123,13 +198,21 @@ export default function ChatInterface() {
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
+      
+      // If currently typing, skip the animation
+      if (isTyping) {
+        setSkipTyping(true);
+        return;
+      }
+      
+      // Otherwise, send the message normally
       sendMessage();
     }
   };
 
   const handlePageClick = () => {
     // Focus input when clicking anywhere on the page
-    if (inputRef.current && !isTyping && !isTransitioning && !isWaitingForResponse && !(currentQuiz && currentQuiz.length > 0)) {
+    if (inputRef.current && !isTyping && !isTransitioning && !isWaitingForResponse && !isVideoGenerating && !(currentQuiz && currentQuiz.length > 0)) {
       inputRef.current.focus();
     }
   };
@@ -150,12 +233,12 @@ export default function ChatInterface() {
       {/* Audio Toggle Button - Top Right Corner */}
       <button
         onClick={() => setIsAudioEnabled(!isAudioEnabled)}
-        disabled={isTyping || isTransitioning || isWaitingForResponse || (currentQuiz && currentQuiz.length > 0)}
+        disabled={isTyping || isTransitioning || isWaitingForResponse || isVideoGenerating || (currentQuiz && currentQuiz.length > 0)}
         className={`fixed top-4 right-4 z-50 p-3 rounded-full transition-all duration-200 shadow-lg ${
           isAudioEnabled 
             ? 'bg-blue-500 text-white hover:bg-blue-600' 
             : 'bg-gray-200 text-gray-500 hover:bg-gray-300'
-        } ${isTyping || isTransitioning || isWaitingForResponse || (currentQuiz && currentQuiz.length > 0) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+        } ${isTyping || isTransitioning || isWaitingForResponse || isVideoGenerating || (currentQuiz && currentQuiz.length > 0) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
         title={isAudioEnabled ? 'Audio enabled - Click to disable' : 'Audio disabled - Click to enable'}
       >
         {isAudioEnabled ? (
@@ -217,6 +300,12 @@ export default function ChatInterface() {
               {isTyping ? typingDisplay : typingText}
               {isTyping && <span className="animate-pulse text-gray-500">|</span>}
             </div>
+            {/* Skip hint */}
+            {isTyping && (
+              <div className="text-xs text-gray-400 mt-2 opacity-70">
+                Press Enter to skip animation
+              </div>
+            )}
           </div>
         )}
 
@@ -228,19 +317,37 @@ export default function ChatInterface() {
         )}
 
         {/* Persistent Video Player */}
-        {currentVideoUrl && (
+        {(currentVideoUrl || isVideoGenerating) && (
           <div className="mb-8 max-w-7xl mx-auto">
             <div className="relative w-full" style={{ aspectRatio: '16/9', minHeight: '500px' }}>
-              <video 
-                src={currentVideoUrl} 
-                autoPlay 
-                muted
-                loop
-                playsInline
-                className="absolute inset-0 w-full h-full object-cover rounded-[2rem] shadow-2xl"
-              >
-                Your browser does not support the video tag.
-              </video>
+              {currentVideoUrl ? (
+                // Video is ready - show actual video
+                <video 
+                  src={currentVideoUrl} 
+                  autoPlay 
+                  loop
+                  playsInline
+                  controls
+                  className="absolute inset-0 w-full h-full object-cover rounded-[2rem] shadow-2xl"
+                >
+                  Your browser does not support the video tag.
+                </video>
+              ) : (
+                // Video is generating - show placeholder with loading
+                <div className="absolute inset-0 w-full h-full bg-gradient-to-br from-blue-50 to-purple-50 rounded-[2rem] shadow-2xl flex items-center justify-center">
+                  <div className="text-center">
+                    <div className="mb-6">
+                      <LoaderOne />
+                    </div>
+                    <div className="text-xl text-gray-600 font-light">
+                      Generating your video...
+                    </div>
+                    <div className="text-sm text-gray-500 mt-2">
+                      This may take a few minutes
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -271,7 +378,7 @@ export default function ChatInterface() {
             onKeyPress={handleKeyPress}
             placeholder=""
             className="text-center text-4xl font-light border-none shadow-none focus:ring-0 focus:border-none bg-transparent py-12 px-6"
-            disabled={isTyping || isTransitioning || isWaitingForResponse || (currentQuiz && currentQuiz.length > 0)}
+            disabled={isTyping || isTransitioning || isWaitingForResponse || isVideoGenerating || (currentQuiz && currentQuiz.length > 0)}
             style={{ fontSize: '2.5rem', lineHeight: '1.4' }}
           />
         </div>
