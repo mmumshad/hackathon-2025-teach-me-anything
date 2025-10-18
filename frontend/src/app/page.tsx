@@ -53,9 +53,15 @@ export default function ChatInterface() {
 
   // Typing animation effect
   useEffect(() => {
-    if (isTyping && typingText) {
+    if (isTyping && typingText && !skipTyping) {
       let currentIndex = 0;
       const interval = setInterval(() => {
+        // Check if skipTyping was triggered during animation
+        if (skipTyping) {
+          clearInterval(interval);
+          return;
+        }
+        
         if (currentIndex < typingText.length) {
           setTypingDisplay(typingText.substring(0, currentIndex + 1)); // Use separate state
           currentIndex++;
@@ -85,7 +91,7 @@ export default function ChatInterface() {
 
       return () => clearInterval(interval);
     }
-  }, [isTyping, typingText]);
+  }, [isTyping, typingText, skipTyping]);
 
   // Skip typing animation effect
   useEffect(() => {
@@ -95,6 +101,7 @@ export default function ChatInterface() {
       setIsTyping(false);
       setIsTransitioning(true);
       
+      // Shorter delay for immediate response
       setTimeout(() => {
         // Always add to message history - messages should persist
         setMessages(prev => [...prev, {
@@ -108,9 +115,30 @@ export default function ChatInterface() {
         setIsWaitingForResponse(false);
         setIsTransitioning(false);
         setSkipTyping(false); // Reset skip state
-      }, 1000);
+      }, 500); // Reduced from 1000ms to 500ms for faster response
     }
-  }, [skipTyping, isTyping, typingText]);
+  }, [skipTyping, isTyping, typingText, userId]);
+
+  // Global key listener for Enter key (works even when input is disabled)
+  useEffect(() => {
+    const handleGlobalKeyPress = (e: KeyboardEvent) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        // If currently typing, skip the animation
+        if (isTyping) {
+          e.preventDefault();
+          setSkipTyping(true);
+          return;
+        }
+      }
+    };
+
+    // Add global event listener
+    document.addEventListener('keydown', handleGlobalKeyPress);
+
+    return () => {
+      document.removeEventListener('keydown', handleGlobalKeyPress);
+    };
+  }, [isTyping, skipTyping, typingText]);
 
   // Auto-focus input when not typing
   useEffect(() => {
