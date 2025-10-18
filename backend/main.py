@@ -40,16 +40,6 @@ async def health_check():
         "timestamp": datetime.now().isoformat()
     }
 
-# Test endpoint to debug the issue
-@app.post("/api/v1/chat/test")
-async def test_endpoint():
-    """Test endpoint to debug the issue"""
-    try:
-        return {"message": "Test endpoint working", "status": "success"}
-    except Exception as e:
-        logger.error(f"Error in test endpoint: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error in test endpoint: {str(e)}")
-
 # Main chat endpoint
 @app.post("/api/v1/chat/message")
 async def chat_message(
