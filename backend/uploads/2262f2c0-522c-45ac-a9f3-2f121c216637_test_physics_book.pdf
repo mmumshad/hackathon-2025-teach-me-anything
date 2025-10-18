@@ -1,0 +1,81 @@
+%PDF-1.4
+1 0 obj
+<<
+/Type /Catalog
+/Pages 2 0 R
+>>
+endobj
+
+2 0 obj
+<<
+/Type /Pages
+/Kids [3 0 R]
+/Count 1
+>>
+endobj
+
+3 0 obj
+<<
+/Type /Page
+/Parent 2 0 R
+/MediaBox [0 0 612 792]
+/Contents 4 0 R
+/Resources <<
+/Font <<
+/F1 5 0 R
+>>
+>>
+>>
+endobj
+
+4 0 obj
+<<
+/Length 200
+>>
+stream
+BT
+/F1 12 Tf
+100 700 Td
+(Introduction to Physics) Tj
+0 -20 Td
+(Chapter 1: Motion and Forces) Tj
+0 -20 Td
+(Physics is the study of matter, energy, and their interactions.) Tj
+0 -20 Td
+(Newton's first law states that an object at rest stays at rest,) Tj
+0 -20 Td
+(and an object in motion stays in motion, unless acted upon by an external force.) Tj
+0 -20 Td
+(This is also known as the law of inertia.) Tj
+0 -20 Td
+(Force is a vector quantity that has both magnitude and direction.) Tj
+0 -20 Td
+(The SI unit of force is the Newton (N).) Tj
+ET
+endstream
+endobj
+
+5 0 obj
+<<
+/Type /Font
+/Subtype /Type1
+/BaseFont /Helvetica
+>>
+endobj
+
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000274 00000 n 
+0000000525 00000 n 
+trailer
+<<
+/Size 6
+/Root 1 0 R
+>>
+startxref
+610
+%%EOF

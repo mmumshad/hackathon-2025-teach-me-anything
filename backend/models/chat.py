@@ -4,7 +4,7 @@ Contains Pydantic models for chat-related data structures
 """
 
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from fastapi import UploadFile
 
 class ChatMessage(BaseModel):
@@ -40,6 +40,8 @@ class ChatResponse(BaseModel):
     content: str
     timestamp: str
     audioUrl: Optional[str] = None
+    audiobookChunks: Optional[List[str]] = None  # Base64 encoded audio chunks for audiobook
+    audiobookInfo: Optional[Dict[str, Any]] = None  # Info about the generated audiobook
 
 class ChatMessageResponse(BaseModel):
     """Model for complete chat message responses"""
