@@ -18,7 +18,7 @@ class ElevenLabsService:
     def __init__(self):
         self.api_key = os.getenv("ELEVENLABS_API_KEY")
         self.base_url = "https://api.elevenlabs.io/v1"
-        self.default_voice_id = "21m00Tcm4TlvDq8ikWAM"  # Rachel voice - good for educational content
+        self.default_voice_id = os.getenv("ELEVENLABS_VOICE_ID", "yj4ZLC16WtrBEwPzIXzI")  # Custom voice for educational content
         self.headers = {
             'xi-api-key': self.api_key,
             'Content-Type': 'application/json'

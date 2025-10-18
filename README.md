@@ -40,6 +40,7 @@ TechMeAnything is an intelligent tutoring system designed for K12 students that 
 ### Prerequisites
 - Node.js 18+ and npm
 - Python 3.8+
+- uv (recommended) or pip for Python package management
 - API keys for AI services
 
 ### 1. Clone the Repository
@@ -51,6 +52,10 @@ cd hackathon-2025-teach-me-anything
 ### 2. Backend Setup
 ```bash
 cd backend
+# Option 1: Using uv (recommended)
+uv sync
+
+# Option 2: Using traditional pip
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
@@ -61,6 +66,7 @@ Create `backend/.env` with your API keys:
 ```bash
 OPENAI_API_KEY=your_openai_api_key
 ELEVENLABS_API_KEY=your_elevenlabs_api_key
+ELEVENLABS_VOICE_ID=NihRgaLj2HWAjvZ5XNxl
 GEMINI_API_KEY=your_gemini_api_key
 MEM0_API_KEY=your_mem0_api_key
 ```
@@ -68,6 +74,10 @@ MEM0_API_KEY=your_mem0_api_key
 ### 4. Start Backend Server
 ```bash
 cd backend
+# Option 1: Using uv (recommended)
+uv run uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+# Option 2: Using traditional python
 python main.py
 ```
 Backend will be available at `http://localhost:8000`
