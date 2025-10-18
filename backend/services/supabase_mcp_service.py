@@ -457,7 +457,9 @@ class SupabaseMCPService:
             "i recommend", "i suggest", "great book", "amazing video", "check out",
             "you should read", "found this", "loved this", "this helped me", 
             "worth reading", "worth watching", "must read", "must watch", 
-            "highly recommend", "definitely read", "try this", "this is good"
+            "highly recommend", "definitely read", "try this", "this is good",
+            "would like to recommend", "would like to suggest", "want to recommend",
+            "want to suggest", "reccomend", "recomend"  # Handle common typos
         ]
         
         # Check if message contains recommendation keywords
@@ -466,12 +468,12 @@ class SupabaseMCPService:
         if not has_recommendation_keyword:
             return None
         
-        # Extract material type
+        # Extract material type (check more specific types first)
         material_type = "book"  # default
-        if any(word in message_lower for word in ["video", "youtube", "watch", "channel"]):
-            material_type = "video"
-        elif any(word in message_lower for word in ["podcast", "listen", "episode"]):
+        if any(word in message_lower for word in ["podcast", "listen", "episode"]):
             material_type = "podcast"
+        elif any(word in message_lower for word in ["video", "youtube", "watch", "channel"]):
+            material_type = "video"
         elif any(word in message_lower for word in ["article", "blog", "post", "website"]):
             material_type = "article"
         elif any(word in message_lower for word in ["course", "class", "tutorial"]):
