@@ -1,7 +1,6 @@
 from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 import uuid
-import random
 from datetime import datetime
 import logging
 
@@ -41,73 +40,57 @@ async def health_check():
     }
 
 # Main chat endpoint
-@app.post("/api/v1/chat/message", response_model=ChatMessageResponse)
+@app.post("/api/v1/chat/message")
 async def chat_message(
     chat_request: ChatRequest,
     x_user_id: str = Header(..., alias="X-User-ID")
 ):
     """Process user chat message and return AI response with optional audio/video/quiz"""
     try:
-        # Randomly select response type
-        response_type = random.choice(["text_only", "video_audio", "quiz"])
+        logger.info(f"Processing chat message from user {x_user_id}: {chat_request.message.content}")
         
-        # Base response
-        response = ChatResponse(
-            id=f"resp-{uuid.uuid4().hex[:8]}",
-            messageId=chat_request.message.id,
-            content="",
-            timestamp=datetime.now().isoformat()
+        # Check if user requested a quiz
+        should_generate_quiz = openai_service.should_generate_quiz(chat_request.message.content)
+        quiz_questions = None
+        
+        # Generate AI response with quiz request flag
+        ai_response = await openai_service.generate_chat_response(
+            user_message=chat_request.message.content,
+            user_id=x_user_id,
+            is_quiz_request=should_generate_quiz
         )
         
-        # Initialize optional fields
-        audio_url = None
-        video_url = None
-        quiz = None
+        if should_generate_quiz:
+            logger.info("Generating quiz for user request")
+            try:
+                # Extract topic from the message for quiz generation
+                topic = chat_request.message.content
+                quiz_questions = await openai_service.generate_quiz(topic)
+            except Exception as quiz_error:
+                logger.warning(f"Failed to generate quiz: {str(quiz_error)}")
+                # Continue without quiz if generation fails
         
-        if response_type == "text_only":
-            response.content = "The water cycle is a continuous process where water evaporates from oceans, forms clouds, and returns to Earth as precipitation. This natural process helps distribute water across the planet and supports all life forms."
-            
-        elif response_type == "video_audio":
-            response.content = "Photosynthesis is the amazing process where plants convert sunlight into energy! They absorb carbon dioxide from the air and water from the soil, then use sunlight to create glucose and release oxygen that we breathe."
-            audio_url = "http://localhost:3000/sample-video.mp3"
-            video_url = "http://localhost:3000/sample-video.mp4"
-            
-        elif response_type == "quiz":
-            response.content = "Let's test your knowledge about the solar system! The sun is at the center, and planets orbit around it in elliptical paths."
-            quiz = [
-                QuizQuestion(
-                    id="q1",
-                    question="Which planet is closest to the Sun?",
-                    options=[
-                        QuizOption(id="a", text="Venus"),
-                        QuizOption(id="b", text="Mercury"),
-                        QuizOption(id="c", text="Earth"),
-                        QuizOption(id="d", text="Mars")
-                    ],
-                    correctAnswerId="b",
-                    explanation="Mercury is the closest planet to the Sun, completing an orbit in just 88 Earth days!"
-                ),
-                QuizQuestion(
-                    id="q2",
-                    question="What is the largest planet in our solar system?",
-                    options=[
-                        QuizOption(id="a", text="Saturn"),
-                        QuizOption(id="b", text="Jupiter"),
-                        QuizOption(id="c", text="Neptune"),
-                        QuizOption(id="d", text="Uranus")
-                    ],
-                    correctAnswerId="b",
-                    explanation="Jupiter is the largest planet in our solar system, with a mass greater than all other planets combined!"
-                )
+        # Generate response ID and timestamp
+        response_id = str(uuid.uuid4())
+        current_timestamp = datetime.now().isoformat()
+        
+        # Build response
+        response_data = {
+            "responses": [
+                {
+                    "id": response_id,
+                    "messageId": chat_request.message.id,
+                    "content": ai_response,
+                    "timestamp": current_timestamp,
+                    "audioUrl": "https://mock-audio.com/response.mp3" if chat_request.requireAudio else None,
+                    "videoUrl": "https://mock-video.com/response.mp4" if "video" in chat_request.message.content.lower() else None,
+                    "quiz": quiz_questions
+                }
             ]
+        }
         
-        return ChatMessageResponse(
-            success=True,
-            response=response,
-            audioUrl=audio_url,
-            videoUrl=video_url,
-            quiz=quiz
-        )
+        logger.info(f"Successfully generated response for user {x_user_id}")
+        return response_data
         
     except Exception as e:
         logger.error(f"Error processing chat message: {str(e)}")
