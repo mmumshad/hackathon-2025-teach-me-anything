@@ -7,7 +7,10 @@ import openai
 from typing import List, Dict, Optional, Any
 import json
 import re
+import logging
 from config import Config
+
+logger = logging.getLogger(__name__)
 
 class OpenAIService:
     """Service class for OpenAI API interactions"""
@@ -21,11 +24,12 @@ class OpenAIService:
         self.model = Config.OPENAI_MODEL
     
     def generate_chat_response(
-        self, 
-        user_message: str, 
+        self,
+        user_message: str,
         user_id: str,
         grade_level: Optional[str] = None,
-        is_quiz_request: bool = False
+        is_quiz_request: bool = False,
+        chat_history: Optional[List[Dict[str, str]]] = None
     ) -> str:
         """
         Generate a chat response using OpenAI
@@ -35,6 +39,7 @@ class OpenAIService:
             user_id: Unique identifier for the user
             grade_level: Optional grade level for personalized responses
             is_quiz_request: Whether this is a quiz request
+            chat_history: Optional list of previous chat messages for context
             
         Returns:
             Generated response text
@@ -43,12 +48,20 @@ class OpenAIService:
             # Build system prompt for educational context
             system_prompt = self._build_system_prompt(grade_level, is_quiz_request)
             
+            # Build messages list with chat history context
+            messages = [{"role": "system", "content": system_prompt}]
+            
+            # Add chat history if provided
+            if chat_history:
+                messages.extend(chat_history)
+                logger.info(f"Added {len(chat_history)} previous messages to context")
+            
+            # Add current user message
+            messages.append({"role": "user", "content": user_message})
+            
             response = self.client.chat.completions.create(
                 model=self.model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_message}
-                ],
+                messages=messages,
                 max_tokens=Config.MAX_RESPONSE_LENGTH,
                 temperature=0.7
             )

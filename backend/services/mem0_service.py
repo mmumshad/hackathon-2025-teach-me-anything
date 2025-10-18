@@ -111,18 +111,26 @@ class Mem0Service:
             results = self.client.search(
                 "user preferences name grade language learning style",
                 user_id=user_id,
-                filters={"category": "user_preferences"}
+                filters={"user_id": user_id}
             )
             
-            if results and len(results) > 0:
-                # Extract preferences from the most recent result
-                latest_result = results[0]
-                metadata = latest_result.get("metadata", {})
-                preferences = metadata.get("preferences", {})
+            if results and isinstance(results, dict) and "results" in results:
+                # Filter results to only include user_preferences category
+                preference_memories = []
+                for memory in results["results"]:
+                    metadata = memory.get("metadata", {})
+                    if metadata.get("category") == "user_preferences":
+                        preference_memories.append(memory)
                 
-                if preferences:
-                    logger.info(f"Retrieved user preferences for user {user_id}")
-                    return preferences
+                if preference_memories:
+                    # Get the most recent preference memory
+                    latest_result = preference_memories[0]
+                    metadata = latest_result.get("metadata", {})
+                    preferences = metadata.get("preferences", {})
+                    
+                    if preferences:
+                        logger.info(f"Retrieved user preferences for user {user_id}")
+                        return preferences
             
             # Return default preferences if none found
             return self._get_default_preferences()
@@ -201,16 +209,26 @@ class Mem0Service:
             # Get all memories for the user with proper filters
             all_memories = self.client.get_all(
                 user_id=user_id,
-                filters={"category": "session_history"}
+                filters={"user_id": user_id}
             )
             
-            # Sort by timestamp (most recent first) and limit
-            all_memories.sort(
-                key=lambda x: x.get("metadata", {}).get("timestamp", ""), 
-                reverse=True
-            )
+            # Filter for session_history and sort by timestamp (most recent first)
+            if isinstance(all_memories, dict) and "results" in all_memories:
+                session_memories = []
+                for memory in all_memories["results"]:
+                    metadata = memory.get("metadata", {})
+                    if metadata.get("category") == "session_history":
+                        session_memories.append(memory)
+                
+                # Sort by timestamp (most recent first) and limit
+                session_memories.sort(
+                    key=lambda x: x.get("metadata", {}).get("timestamp", ""), 
+                    reverse=True
+                )
+                
+                return session_memories[:limit]
             
-            return all_memories[:limit]
+            return []
             
         except Exception as e:
             logger.error(f"Error retrieving session history: {str(e)}")
@@ -325,6 +343,127 @@ class Mem0Service:
             formatted.append(f"{key}: {value}")
         return ", ".join(formatted)
     
+    def get_session_preferences(self, user_id: str) -> Dict[str, Any]:
+        """
+        Get session preferences (temporary preferences during onboarding)
+        
+        Args:
+            user_id: User identifier
+            
+        Returns:
+            Dictionary of session preferences
+        """
+        if not self.is_available():
+            return {}
+        
+        try:
+            # Search for session preferences
+            results = self.client.search(
+                "session preferences onboarding temporary",
+                user_id=user_id,
+                filters={"user_id": user_id}
+            )
+            
+            if results and isinstance(results, dict) and "results" in results:
+                # Filter results to only include session_preferences category
+                session_memories = []
+                for memory in results["results"]:
+                    metadata = memory.get("metadata", {})
+                    if metadata.get("category") == "session_preferences":
+                        session_memories.append(memory)
+                
+                if session_memories:
+                    # Get the most recent session preference memory
+                    latest_result = session_memories[0]
+                    metadata = latest_result.get("metadata", {})
+                    session_preferences = metadata.get("session_preferences", {})
+                    
+                    if session_preferences:
+                        logger.info(f"Retrieved session preferences for user {user_id}")
+                        return session_preferences
+            
+            return {}
+            
+        except Exception as e:
+            logger.error(f"Error retrieving session preferences: {str(e)}")
+            return {}
+    
+    def store_session_preferences(self, user_id: str, session_preferences: Dict[str, Any]) -> bool:
+        """
+        Store session preferences (temporary preferences during onboarding)
+        
+        Args:
+            user_id: User identifier
+            session_preferences: Session preferences to store
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.is_available():
+            return False
+        
+        try:
+            # Store session preferences
+            result = self.client.add(
+                f"Session preferences for user {user_id}: {self._format_preferences(session_preferences)}",
+                user_id=user_id,
+                metadata={
+                    "category": "session_preferences",
+                    "timestamp": datetime.now().isoformat(),
+                    "session_preferences": session_preferences
+                }
+            )
+            
+            if result:
+                logger.info(f"Stored session preferences for user {user_id}")
+                return True
+            else:
+                logger.error(f"Failed to store session preferences for user {user_id}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error storing session preferences: {str(e)}")
+            return False
+    
+    def clear_session_preferences(self, user_id: str) -> bool:
+        """
+        Clear session preferences (called when onboarding is complete)
+        
+        Args:
+            user_id: User identifier
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.is_available():
+            return False
+        
+        try:
+            # Get all session preference memories
+            results = self.client.search(
+                "session preferences",
+                user_id=user_id,
+                filters={"user_id": user_id}
+            )
+            
+            if results and isinstance(results, dict) and "results" in results:
+                # Delete all session preference memories
+                for memory in results["results"]:
+                    metadata = memory.get("metadata", {})
+                    if metadata.get("category") == "session_preferences":
+                        memory_id = memory.get("id")
+                        if memory_id:
+                            self.client.delete(memory_id)
+                
+                logger.info(f"Cleared session preferences for user {user_id}")
+                return True
+            
+            return True  # No session preferences to clear
+            
+        except Exception as e:
+            logger.error(f"Error clearing session preferences: {str(e)}")
+            return False
+
     def _get_default_preferences(self) -> Dict[str, Any]:
         """Get default user preferences"""
         return {

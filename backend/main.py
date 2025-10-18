@@ -16,6 +16,7 @@ from services import OpenAIService, ElevenLabsService
 from services.mem0_service import Mem0Service
 from services.supabase_mcp_service import SupabaseMCPService
 from services.pdf_service import PDFService
+from services.user_onboarding_service import UserOnboardingService
 from models import ChatRequest, ChatResponse, ChatMessageResponse, QuizQuestion, FileUploadResponse, ChatMessage
 from utils import generate_user_id
 
@@ -41,6 +42,10 @@ elevenlabs_service = ElevenLabsService()
 mem0_service = Mem0Service()
 supabase_mcp_service = SupabaseMCPService()
 pdf_service = PDFService()
+onboarding_service = UserOnboardingService()
+
+# In-memory storage for onboarding session preferences (temporary)
+onboarding_sessions = {}
 
 
 # File upload configuration
@@ -540,6 +545,75 @@ async def chat_message(
         language = learning_context["language"]
         learning_style = learning_context["learning_style"]
         
+        # Check if user needs onboarding
+        needs_onboarding = onboarding_service.should_start_onboarding(user_preferences)
+        logger.info(f"User needs onboarding: {needs_onboarding}")
+        
+        if needs_onboarding:
+            # Handle onboarding flow
+            logger.info("Starting user onboarding flow")
+            
+            # Get any previously collected preferences from this session (stored in memory)
+            session_preferences = onboarding_sessions.get(x_user_id, {})
+            
+            # Generate onboarding response
+            onboarding_result = onboarding_service.get_onboarding_response(
+                user_message=message,
+                user_preferences=user_preferences,
+                collected_preferences=session_preferences
+            )
+            
+            if onboarding_result["is_complete"]:
+                # Onboarding complete, save preferences and continue with normal flow
+                logger.info("Onboarding completed, saving preferences")
+                merged_preferences = onboarding_service.merge_preferences(
+                    user_preferences, 
+                    onboarding_result["collected_preferences"]
+                )
+                
+                # Save the complete preferences to Mem0
+                mem0_service.store_user_preferences(x_user_id, merged_preferences)
+                
+                # Update local variables with new preferences
+                user_preferences = merged_preferences
+                user_name = user_preferences.get("name", "Student")
+                grade_level = user_preferences.get("grade", "middle")
+                language = user_preferences.get("language", "en")
+                learning_style = user_preferences.get("learning_style", "reading")
+                
+                # Clear session preferences since onboarding is complete
+                if x_user_id in onboarding_sessions:
+                    del onboarding_sessions[x_user_id]
+                
+                logger.info(f"Updated user context - Name: {user_name}, Grade: {grade_level}, Language: {language}, Learning Style: {learning_style}")
+            else:
+                # Still in onboarding, save current progress and return onboarding response
+                logger.info(f"Onboarding in progress, step: {onboarding_result['current_step']}")
+                
+                # Save current progress to in-memory session preferences
+                onboarding_sessions[x_user_id] = onboarding_result["collected_preferences"]
+                
+                # Return onboarding response
+                response_id = str(uuid.uuid4())
+                onboarding_response = ChatResponse(
+                    id=response_id,
+                    messageId=message_id,
+                    content=onboarding_result["response"],
+                    timestamp=datetime.now().isoformat()
+                )
+                
+                return ChatMessageResponse(
+                    success=True,
+                    response=onboarding_response,
+                    userContext={
+                        "userName": user_name,
+                        "gradeLevel": grade_level,
+                        "language": language,
+                        "learningStyle": learning_style,
+                        "isOnboarding": True,
+                        "onboardingStep": onboarding_result["current_step"]
+                    }
+                )
         
         logger.info(f"User context - Name: {user_name}, Grade: {grade_level}, Language: {language}, Learning Style: {learning_style}")
         
@@ -638,11 +712,22 @@ async def chat_message(
         
         # Generate AI response only if we don't have Supabase recommendations
         if not has_supabase_recommendations:
-            logger.info(f"Calling generate_chat_response with is_quiz_request={should_generate_quiz}")
+            # Get chat history from Supabase for context
+            chat_history = []
+            if supabase_mcp_service.is_available():
+                try:
+                    chat_history = supabase_mcp_service.get_user_chat_history(x_user_id, limit=5)
+                    logger.info(f"Retrieved {len(chat_history)} previous messages for context")
+                except Exception as history_error:
+                    logger.warning(f"Failed to get chat history: {str(history_error)}")
+                    chat_history = []
+            
+            logger.info(f"Calling generate_chat_response with is_quiz_request={should_generate_quiz}, chat_history={len(chat_history)} messages")
             ai_response = openai_service.generate_chat_response(
                 user_message=chat_request.message.content,
                 user_id=x_user_id,
-                is_quiz_request=should_generate_quiz
+                is_quiz_request=should_generate_quiz,
+                chat_history=chat_history
             )
             logger.info(f"AI response received: {ai_response[:100]}...")
             
