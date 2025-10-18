@@ -1,12 +1,15 @@
 from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 import uuid
 from datetime import datetime
 import logging
+import os
 
 # Import our custom modules
 from config import Config
 from services import OpenAIService
+from services.openai_video_service import OpenAIVideoService
 from models import ChatRequest, ChatResponse, ChatMessageResponse, QuizQuestion
 from utils import generate_user_id
 
@@ -25,8 +28,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize OpenAI service
+# Initialize services
 openai_service = OpenAIService()
+video_service = OpenAIVideoService()
 
 # Models are now imported from models package
 
@@ -49,9 +53,11 @@ async def chat_message(
     try:
         logger.info(f"Processing chat message from user {x_user_id}: {chat_request.message.content}")
         
-        # Check if user requested a quiz
+        # Check if user requested a quiz or video
         should_generate_quiz = openai_service.should_generate_quiz(chat_request.message.content)
+        should_generate_video = openai_service.should_generate_video(chat_request.message.content)
         quiz_questions = None
+        video_data = None
         
         # Generate AI response with quiz request flag
         ai_response = await openai_service.generate_chat_response(
@@ -70,6 +76,35 @@ async def chat_message(
                 logger.warning(f"Failed to generate quiz: {str(quiz_error)}")
                 # Continue without quiz if generation fails
         
+        if should_generate_video:
+            logger.info("Generating video for user request")
+            try:
+                # Extract video prompt from user message and AI response
+                video_prompt = openai_service.extract_video_prompt(chat_request.message.content, ai_response)
+                logger.info(f"Video prompt: {video_prompt}")
+                
+                # Generate video using OpenAI Sora 2
+                video_result = await video_service.generate_video(
+                    prompt=video_prompt,
+                    model="sora-2",
+                    size="720x1280",  # Vertical format for mobile
+                    seconds="8"
+                )
+                
+                video_data = {
+                    "videoId": video_result["id"],
+                    "status": video_result["status"],
+                    "prompt": video_prompt,
+                    "size": video_result["size"],
+                    "duration": video_result["seconds"]
+                }
+                
+                logger.info(f"Video generation started with ID: {video_result['id']}")
+                
+            except Exception as video_error:
+                logger.warning(f"Failed to generate video: {str(video_error)}")
+                # Continue without video if generation fails
+        
         # Generate response ID and timestamp
         response_id = str(uuid.uuid4())
         current_timestamp = datetime.now().isoformat()
@@ -83,7 +118,8 @@ async def chat_message(
                     "content": ai_response,
                     "timestamp": current_timestamp,
                     "audioUrl": "https://mock-audio.com/response.mp3" if chat_request.requireAudio else None,
-                    "videoUrl": "https://mock-video.com/response.mp4" if "video" in chat_request.message.content.lower() else None,
+                    "videoUrl": f"/api/v1/video/{video_data['videoId']}" if video_data else None,
+                    "video": video_data,
                     "quiz": quiz_questions
                 }
             ]
@@ -95,6 +131,67 @@ async def chat_message(
     except Exception as e:
         logger.error(f"Error processing chat message: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error processing chat message: {str(e)}")
+
+# Video status endpoint
+@app.get("/api/v1/video/{video_id}/status")
+async def get_video_status(video_id: str):
+    """Get the status of a video generation job"""
+    try:
+        status = await video_service.check_status(video_id)
+        return {
+            "success": True,
+            "video": status
+        }
+    except Exception as e:
+        logger.error(f"Error checking video status: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error checking video status: {str(e)}")
+
+# Video download endpoint
+@app.get("/api/v1/video/{video_id}")
+async def get_video(video_id: str):
+    """Download a completed video"""
+    try:
+        # Check if video is completed
+        status = await video_service.check_status(video_id)
+        
+        if status["status"] != "completed":
+            return {
+                "success": False,
+                "message": f"Video is not ready yet. Status: {status['status']}",
+                "status": status["status"],
+                "progress": status.get("progress", 0)
+            }
+        
+        # Download the video
+        video_path = await video_service.download_video(video_id)
+        
+        if video_path and video_path.exists():
+            return FileResponse(
+                path=str(video_path),
+                media_type="video/mp4",
+                filename=f"{video_id}.mp4"
+            )
+        else:
+            raise HTTPException(status_code=404, detail="Video file not found")
+            
+    except Exception as e:
+        logger.error(f"Error downloading video: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error downloading video: {str(e)}")
+
+# List all videos endpoint
+@app.get("/api/v1/videos")
+async def list_videos():
+    """List all generated videos"""
+    try:
+        videos = await video_service.list_videos()
+        return {
+            "success": True,
+            "videos": videos,
+            "count": len(videos)
+        }
+    except Exception as e:
+        logger.error(f"Error listing videos: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error listing videos: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn
