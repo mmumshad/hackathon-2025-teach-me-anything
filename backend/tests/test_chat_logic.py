@@ -5,7 +5,7 @@ Test the chat logic directly
 
 import sys
 import os
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from services.supabase_mcp_service import SupabaseMCPService
 

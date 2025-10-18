@@ -8,8 +8,8 @@ import sys
 import json
 from datetime import datetime
 
-# Add the current directory to Python path
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# Add the backend directory to Python path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from services.intelligent_preference_extraction_service import IntelligentPreferenceExtractionService
 

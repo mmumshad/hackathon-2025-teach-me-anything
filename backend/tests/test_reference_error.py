@@ -5,7 +5,13 @@ Test script to capture exact OpenAI error message with reference image
 
 import asyncio
 import json
+import sys
+import os
 from datetime import datetime
+
+# Add the backend directory to Python path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from services.openai_video_service import OpenAIVideoService
 
 async def test_reference_image_error():

@@ -4,6 +4,12 @@ Test script for automatic recommendation detection
 """
 
 import asyncio
+import sys
+import os
+
+# Add the backend directory to Python path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from services.supabase_mcp_service import SupabaseMCPService
 
 def test_recommendation_detection():
