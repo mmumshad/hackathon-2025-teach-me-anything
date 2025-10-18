@@ -593,27 +593,39 @@ async def chat_message(
                 # Save current progress to in-memory session preferences
                 onboarding_sessions[x_user_id] = onboarding_result["collected_preferences"]
                 
-                # Return onboarding response
+                # Return onboarding response in standardized format
                 response_id = str(uuid.uuid4())
-                onboarding_response = ChatResponse(
-                    id=response_id,
-                    messageId=message_id,
-                    content=onboarding_result["response"],
-                    timestamp=datetime.now().isoformat()
-                )
+                current_timestamp = datetime.now().isoformat()
                 
-                return ChatMessageResponse(
-                    success=True,
-                    response=onboarding_response,
-                    userContext={
-                        "userName": user_name,
-                        "gradeLevel": grade_level,
-                        "language": language,
-                        "learningStyle": learning_style,
-                        "isOnboarding": True,
-                        "onboardingStep": onboarding_result["current_step"]
-                    }
-                )
+                return {
+                    "responses": [
+                        {
+                            "id": response_id,
+                            "messageId": message_id,
+                            "content": onboarding_result["response"],
+                            "timestamp": current_timestamp,
+                            "audioUrl": None,
+                            "audiobookChunks": None,
+                            "audiobookInfo": None,
+                            "videoUrl": None,
+                            "video": None,
+                            "quiz": None,
+                            "studyMaterials": [],
+                            "recommendationDetected": False,
+                            "addedMaterial": None,
+                            "hasSupabaseRecommendations": False,
+                            "attachedFile": None,
+                            "userContext": {
+                                "userName": user_name,
+                                "gradeLevel": grade_level,
+                                "language": language,
+                                "learningStyle": learning_style,
+                                "isOnboarding": True,
+                                "onboardingStep": onboarding_result["current_step"]
+                            }
+                        }
+                    ]
+                }
         
         logger.info(f"User context - Name: {user_name}, Grade: {grade_level}, Language: {language}, Learning Style: {learning_style}")
         
