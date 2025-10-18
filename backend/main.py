@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 import uuid
+import random
 from datetime import datetime
 import logging
 
@@ -47,29 +48,64 @@ async def chat_message(
 ):
     """Process user chat message and return AI response with optional audio/video/quiz"""
     try:
-        # Return static mock response matching API contracts
+        # Randomly select response type
+        response_type = random.choice(["text_only", "video_audio", "quiz"])
+        
+        # Base response
         response = ChatResponse(
-            id="resp-1",
+            id=f"resp-{uuid.uuid4().hex[:8]}",
             messageId=chat_request.message.id,
-            content="Photosynthesis is the process where plants convert sunlight into energy. ",
+            content="",
             timestamp=datetime.now().isoformat()
         )
         
-        if should_generate_quiz:
-            logger.info("Generating quiz for user request")
-            try:
-                # Extract topic from the message for quiz generation
-                topic = chat_request.message.content
-                quiz_questions = await openai_service.generate_quiz(topic)
-            except Exception as quiz_error:
-                logger.warning(f"Failed to generate quiz: {str(quiz_error)}")
-                # Continue without quiz if generation fails
+        # Initialize optional fields
+        audio_url = None
+        video_url = None
+        quiz = None
+        
+        if response_type == "text_only":
+            response.content = "The water cycle is a continuous process where water evaporates from oceans, forms clouds, and returns to Earth as precipitation. This natural process helps distribute water across the planet and supports all life forms."
+            
+        elif response_type == "video_audio":
+            response.content = "Photosynthesis is the amazing process where plants convert sunlight into energy! They absorb carbon dioxide from the air and water from the soil, then use sunlight to create glucose and release oxygen that we breathe."
+            audio_url = "http://localhost:3000/sample-video.mp3"
+            video_url = "http://localhost:3000/sample-video.mp4"
+            
+        elif response_type == "quiz":
+            response.content = "Let's test your knowledge about the solar system! The sun is at the center, and planets orbit around it in elliptical paths."
+            quiz = [
+                QuizQuestion(
+                    id="q1",
+                    question="Which planet is closest to the Sun?",
+                    options=[
+                        QuizOption(id="a", text="Venus"),
+                        QuizOption(id="b", text="Mercury"),
+                        QuizOption(id="c", text="Earth"),
+                        QuizOption(id="d", text="Mars")
+                    ],
+                    correctAnswerId="b",
+                    explanation="Mercury is the closest planet to the Sun, completing an orbit in just 88 Earth days!"
+                ),
+                QuizQuestion(
+                    id="q2",
+                    question="What is the largest planet in our solar system?",
+                    options=[
+                        QuizOption(id="a", text="Saturn"),
+                        QuizOption(id="b", text="Jupiter"),
+                        QuizOption(id="c", text="Neptune"),
+                        QuizOption(id="d", text="Uranus")
+                    ],
+                    correctAnswerId="b",
+                    explanation="Jupiter is the largest planet in our solar system, with a mass greater than all other planets combined!"
+                )
+            ]
         
         return ChatMessageResponse(
             success=True,
             response=response,
-            audioUrl="http://localhost:3000/sample-video.mp3",  # Mock audio URL
-            videoUrl="http://localhost:3000/sample-video.mp4",  # Your sample video
+            audioUrl=audio_url,
+            videoUrl=video_url,
             quiz=quiz
         )
         
