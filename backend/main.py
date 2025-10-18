@@ -482,8 +482,8 @@ async def chat_message(
                 video_result = await video_service.generate_video(
                     prompt=video_prompt,
                     model="sora-2",
-                    size="720x1280",  # Vertical format for mobile
-                    seconds="8"
+                    size="1280x720",  # Horizontal format for desktop/web
+                    seconds="12"  # Test with known supported duration
                 )
                 
                 video_data = {
