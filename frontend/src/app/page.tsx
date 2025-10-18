@@ -12,6 +12,7 @@ export default function ChatInterface() {
   const [currentMessage, setCurrentMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [typingText, setTypingText] = useState('');
+  const [typingDisplay, setTypingDisplay] = useState(''); // Separate state for typing animation
   const [isWaitingForResponse, setIsWaitingForResponse] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [currentVideoUrl, setCurrentVideoUrl] = useState<string | null>(null);
@@ -40,7 +41,7 @@ export default function ChatInterface() {
       let currentIndex = 0;
       const interval = setInterval(() => {
         if (currentIndex < typingText.length) {
-          setCurrentMessage(typingText.substring(0, currentIndex + 1));
+          setTypingDisplay(typingText.substring(0, currentIndex + 1)); // Use separate state
           currentIndex++;
         } else {
           clearInterval(interval);
@@ -117,8 +118,15 @@ export default function ChatInterface() {
     }
   };
 
+  const handlePageClick = () => {
+    // Focus input when clicking anywhere on the page
+    if (inputRef.current && !isTyping && !isTransitioning && !isWaitingForResponse) {
+      inputRef.current.focus();
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-white flex flex-col relative">
+    <div className="min-h-screen bg-white flex flex-col relative" onClick={handlePageClick}>
       {/* Particles Background */}
       <Particles
         className="absolute inset-0 z-0"
@@ -162,7 +170,7 @@ export default function ChatInterface() {
                 ? (currentVideoUrl ? 'text-3xl text-gray-800' : 'text-5xl text-gray-800')
                 : 'text-lg text-gray-600'
             }`}>
-              {currentMessage}
+              {isTyping ? typingDisplay : typingText}
               {isTyping && <span className="animate-pulse text-gray-500">|</span>}
             </div>
           </div>
@@ -200,21 +208,19 @@ export default function ChatInterface() {
           </div>
         )}
 
-        {/* Input Field */}
-        {!isTyping && !isTransitioning && (
-          <div className="w-full max-w-5xl">
-            <Input
-              ref={inputRef}
-              value={currentMessage}
-              onChange={(e) => setCurrentMessage(e.target.value)}
-              onKeyPress={handleKeyPress}
-              placeholder=""
-              className="text-center text-4xl font-light border-none shadow-none focus:ring-0 focus:border-none bg-transparent py-12 px-6"
-              disabled={isWaitingForResponse}
-              style={{ fontSize: '2.5rem', lineHeight: '1.4' }}
-            />
-          </div>
-        )}
+        {/* Input Field - Always visible but disabled during animations */}
+        <div className="w-full max-w-5xl">
+          <Input
+            ref={inputRef}
+            value={currentMessage}
+            onChange={(e) => setCurrentMessage(e.target.value)}
+            onKeyPress={handleKeyPress}
+            placeholder=""
+            className="text-center text-4xl font-light border-none shadow-none focus:ring-0 focus:border-none bg-transparent py-12 px-6"
+            disabled={isTyping || isTransitioning || isWaitingForResponse}
+            style={{ fontSize: '2.5rem', lineHeight: '1.4' }}
+          />
+        </div>
 
         {/* Send Button (hidden, Enter key triggers send) */}
         <Button
