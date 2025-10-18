@@ -1,10 +1,12 @@
-from fastapi import FastAPI, HTTPException, Header
+from fastapi import FastAPI, HTTPException, Header, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 import uuid
 from datetime import datetime
 import logging
 import os
+import shutil
+from pathlib import Path
 
 # Import our custom modules
 from config import Config
@@ -13,7 +15,7 @@ from services.openai_video_service import OpenAIVideoService
 from services import OpenAIService, ElevenLabsService
 from services.mem0_service import Mem0Service
 from services.supabase_mcp_service import SupabaseMCPService
-from models import ChatRequest, ChatResponse, ChatMessageResponse, QuizQuestion
+from models import ChatRequest, ChatResponse, ChatMessageResponse, QuizQuestion, FileUploadResponse, ChatMessage
 from utils import generate_user_id
 
 # Configure logging
@@ -37,6 +39,14 @@ video_service = OpenAIVideoService()
 elevenlabs_service = ElevenLabsService()
 mem0_service = Mem0Service()
 supabase_mcp_service = SupabaseMCPService()
+
+# File upload configuration
+UPLOAD_DIR = Path("uploads")
+UPLOAD_DIR.mkdir(exist_ok=True)
+
+# Allowed file types
+ALLOWED_EXTENSIONS = {".pdf"}
+MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
 
 # Models are now imported from models package
 
@@ -328,15 +338,163 @@ async def initialize_knowledge_graph():
         logger.error(f"Error initializing knowledge graph: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error initializing knowledge graph: {str(e)}")
 
+# File upload endpoint
+@app.post("/api/v1/upload/file", response_model=FileUploadResponse)
+async def upload_file(
+    file: UploadFile = File(...),
+    x_user_id: str = Header(..., alias="X-User-ID")
+):
+    """Upload a PDF file for use in chat"""
+    try:
+        # Validate file type
+        file_extension = Path(file.filename).suffix.lower()
+        if file_extension not in ALLOWED_EXTENSIONS:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"File type {file_extension} not allowed. Only PDF files are supported."
+            )
+        
+        # Validate file size
+        file_content = await file.read()
+        if len(file_content) > MAX_FILE_SIZE:
+            raise HTTPException(
+                status_code=400,
+                detail=f"File too large. Maximum size is {MAX_FILE_SIZE // (1024*1024)}MB"
+            )
+        
+        # Generate unique file ID and path
+        file_id = str(uuid.uuid4())
+        safe_filename = f"{file_id}_{file.filename}"
+        file_path = UPLOAD_DIR / safe_filename
+        
+        # Save file
+        with open(file_path, "wb") as buffer:
+            buffer.write(file_content)
+        
+        logger.info(f"File uploaded successfully: {file.filename} -> {file_path}")
+        
+        return FileUploadResponse(
+            success=True,
+            fileId=file_id,
+            fileName=file.filename,
+            filePath=str(file_path),
+            fileSize=len(file_content),
+            message="File uploaded successfully"
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error uploading file: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error uploading file: {str(e)}")
+
+# File download endpoint
+@app.get("/api/v1/files/{file_id}")
+async def get_file(file_id: str):
+    """Download an uploaded file"""
+    try:
+        # Find the file by ID
+        file_path = None
+        for file in UPLOAD_DIR.iterdir():
+            if file.name.startswith(file_id):
+                file_path = file
+                break
+        
+        if not file_path or not file_path.exists():
+            raise HTTPException(status_code=404, detail="File not found")
+        
+        return FileResponse(
+            path=str(file_path),
+            media_type="application/pdf",
+            filename=file_path.name
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error downloading file: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error downloading file: {str(e)}")
+
+# List uploaded files endpoint
+@app.get("/api/v1/files")
+async def list_files(x_user_id: str = Header(..., alias="X-User-ID")):
+    """List all uploaded files for a user"""
+    try:
+        files = []
+        for file_path in UPLOAD_DIR.iterdir():
+            if file_path.is_file() and file_path.suffix.lower() == ".pdf":
+                file_id = file_path.stem.split("_")[0]  # Extract file ID from filename
+                files.append({
+                    "fileId": file_id,
+                    "fileName": file_path.name,
+                    "fileSize": file_path.stat().st_size,
+                    "uploadedAt": datetime.fromtimestamp(file_path.stat().st_ctime).isoformat()
+                })
+        
+        return {
+            "success": True,
+            "files": files,
+            "count": len(files)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error listing files: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error listing files: {str(e)}")
+
 # Enhanced chat endpoint with knowledge graph integration
 @app.post("/api/v1/chat/message")
 async def chat_message(
-    chat_request: ChatRequest,
+    message: str = Form(...),
+    message_id: str = Form(...),
+    user_id: str = Form(...),
+    timestamp: str = Form(...),
+    require_audio: bool = Form(False),
+    attached_file: UploadFile = File(None),
     x_user_id: str = Header(..., alias="X-User-ID")
 ):
     """Process user chat message and return AI response with optional audio/video/quiz"""
     try:
-        logger.info(f"Processing chat message from user {x_user_id}: {chat_request.message.content}")
+        # Handle file upload if provided
+        attached_file_path = None
+        if attached_file and attached_file.filename:
+            # Validate file type
+            file_extension = Path(attached_file.filename).suffix.lower()
+            if file_extension not in ALLOWED_EXTENSIONS:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"File type {file_extension} not allowed. Only PDF files are supported."
+                )
+            
+            # Save the attached file
+            file_id = str(uuid.uuid4())
+            safe_filename = f"{file_id}_{attached_file.filename}"
+            file_path = UPLOAD_DIR / safe_filename
+            
+            file_content = await attached_file.read()
+            with open(file_path, "wb") as buffer:
+                buffer.write(file_content)
+            
+            attached_file_path = str(file_path)
+            logger.info(f"Attached file saved: {attached_file.filename} -> {file_path}")
+        
+        # Create ChatMessage object
+        chat_message_obj = ChatMessage(
+            id=message_id,
+            userId=user_id,
+            content=message,
+            timestamp=timestamp
+        )
+        
+        # Create ChatRequest object
+        chat_request = ChatRequest(
+            message=chat_message_obj,
+            requireAudio=require_audio,
+            attachedFile=attached_file_path
+        )
+        
+        logger.info(f"Processing chat message from user {x_user_id}: {message}")
+        if attached_file_path:
+            logger.info(f"Message includes attached file: {attached_file_path}")
         
         # Get user learning context from Mem0
         learning_context = mem0_service.get_learning_context(x_user_id)
@@ -588,6 +746,10 @@ async def chat_message(
                     "recommendationDetected": recommendation_result.get("recommendation_detected", False) if recommendation_result else False,
                     "addedMaterial": recommendation_result.get("material") if recommendation_result and recommendation_result.get("recommendation_detected") else None,
                     "hasSupabaseRecommendations": has_supabase_recommendations,
+                    "attachedFile": {
+                        "filePath": attached_file_path,
+                        "fileName": attached_file.filename if attached_file and attached_file.filename else None
+                    } if attached_file_path else None,
                     "userContext": {
                         "userName": user_name,
                         "gradeLevel": grade_level,

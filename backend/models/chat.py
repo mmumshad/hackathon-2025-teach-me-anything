@@ -5,6 +5,7 @@ Contains Pydantic models for chat-related data structures
 
 from pydantic import BaseModel
 from typing import Optional, List
+from fastapi import UploadFile
 
 class ChatMessage(BaseModel):
     """Model for chat messages"""
@@ -17,6 +18,7 @@ class ChatRequest(BaseModel):
     """Model for chat requests"""
     message: ChatMessage
     requireAudio: Optional[bool] = False
+    attachedFile: Optional[str] = None  # File path or reference for attached PDF
 
 class QuizOption(BaseModel):
     """Model for quiz options"""
@@ -46,3 +48,12 @@ class ChatMessageResponse(BaseModel):
     audioUrl: Optional[str] = None
     videoUrl: Optional[str] = None
     quiz: Optional[List[QuizQuestion]] = None
+
+class FileUploadResponse(BaseModel):
+    """Model for file upload responses"""
+    success: bool
+    fileId: str
+    fileName: str
+    filePath: str
+    fileSize: int
+    message: str
