@@ -1,11 +1,15 @@
 from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 import uuid
 from datetime import datetime
 import logging
+import os
 
 # Import our custom modules
 from config import Config
+from services import OpenAIService
+from services.openai_video_service import OpenAIVideoService
 from services import OpenAIService, ElevenLabsService
 from models import ChatRequest, ChatResponse, ChatMessageResponse, QuizQuestion
 from utils import generate_user_id
@@ -27,6 +31,7 @@ app.add_middleware(
 
 # Initialize services
 openai_service = OpenAIService()
+video_service = OpenAIVideoService()
 elevenlabs_service = ElevenLabsService()
 
 # Models are now imported from models package
@@ -50,6 +55,11 @@ async def chat_message(
     try:
         logger.info(f"Processing chat message from user {x_user_id}: {chat_request.message.content}")
         
+        # Check if user requested a quiz or video
+        should_generate_quiz = openai_service.should_generate_quiz(chat_request.message.content)
+        should_generate_video = openai_service.should_generate_video(chat_request.message.content)
+        quiz_questions = None
+        video_data = None
         # Check if this is a quiz request
         is_quiz_request = openai_service.should_generate_quiz(chat_request.message.content)
         logger.info(f"Is quiz request: {is_quiz_request}")
@@ -78,6 +88,35 @@ async def chat_message(
             quiz_questions = openai_service.generate_quiz(topic, "medium", 3)
             logger.info(f"Generated {len(quiz_questions)} quiz questions")
         
+        if should_generate_video:
+            logger.info("Generating video for user request")
+            try:
+                # Extract video prompt from user message and AI response
+                video_prompt = openai_service.extract_video_prompt(chat_request.message.content, ai_response)
+                logger.info(f"Video prompt: {video_prompt}")
+                
+                # Generate video using OpenAI Sora 2
+                video_result = await video_service.generate_video(
+                    prompt=video_prompt,
+                    model="sora-2",
+                    size="720x1280",  # Vertical format for mobile
+                    seconds="8"
+                )
+                
+                video_data = {
+                    "videoId": video_result["id"],
+                    "status": video_result["status"],
+                    "prompt": video_prompt,
+                    "size": video_result["size"],
+                    "duration": video_result["seconds"]
+                }
+                
+                logger.info(f"Video generation started with ID: {video_result['id']}")
+                
+            except Exception as video_error:
+                logger.warning(f"Failed to generate video: {str(video_error)}")
+                # Continue without video if generation fails
+        
         # Generate response ID and timestamp
         response_id = str(uuid.uuid4())
         current_timestamp = datetime.now().isoformat()
@@ -96,17 +135,18 @@ async def chat_message(
         
         # Build response
         response_data = {
-            "success": True,
-            "response": {
-                "id": response_id,
-                "messageId": chat_request.message.id,
-                "content": ai_response,
-                "timestamp": current_timestamp,
-                "audioUrl": audio_url
-            },
-            "audioUrl": audio_url,
-            "videoUrl": None,
-            "quiz": quiz_questions if quiz_questions else []
+            "responses": [
+                {
+                    "id": response_id,
+                    "messageId": chat_request.message.id,
+                    "content": ai_response,
+                    "timestamp": current_timestamp,
+                    "audioUrl": "https://mock-audio.com/response.mp3" if chat_request.requireAudio else None,
+                    "videoUrl": f"/api/v1/video/{video_data['videoId']}" if video_data else None,
+                    "video": video_data,
+                    "quiz": quiz_questions
+                }
+            ]
         }
         
         logger.info(f"Successfully generated response for user {x_user_id}")
@@ -118,50 +158,66 @@ async def chat_message(
         logger.error(f"Full traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Error processing chat message: {str(e)}")
 
-# ElevenLabs voices endpoint
-@app.get("/api/v1/voices")
-async def get_available_voices():
-    """Get available ElevenLabs voices"""
+# Video status endpoint
+@app.get("/api/v1/video/{video_id}/status")
+async def get_video_status(video_id: str):
+    """Get the status of a video generation job"""
     try:
-        voices_data = elevenlabs_service.get_available_voices()
-        if voices_data:
-            return {
-                "success": True,
-                "voices": voices_data.get("voices", []),
-                "count": len(voices_data.get("voices", []))
-            }
-        else:
-            return {
-                "success": False,
-                "message": "Failed to fetch voices. Check ElevenLabs API key.",
-                "voices": [],
-                "count": 0
-            }
+        status = await video_service.check_status(video_id)
+        return {
+            "success": True,
+            "video": status
+        }
     except Exception as e:
-        logger.error(f"Error fetching voices: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error fetching voices: {str(e)}")
+        logger.error(f"Error checking video status: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error checking video status: {str(e)}")
 
-# Test audio generation endpoint
-@app.post("/api/v1/audio/generate")
-async def generate_test_audio(text: str, voice_id: str = None):
-    """Generate audio from text for testing"""
+# Video download endpoint
+@app.get("/api/v1/video/{video_id}")
+async def get_video(video_id: str):
+    """Download a completed video"""
     try:
-        audio_base64 = elevenlabs_service.generate_audio(text, voice_id)
-        if audio_base64:
-            return {
-                "success": True,
-                "audio": f"data:audio/mpeg;base64,{audio_base64}",
-                "message": "Audio generated successfully"
-            }
-        else:
+        # Check if video is completed
+        status = await video_service.check_status(video_id)
+        
+        if status["status"] != "completed":
             return {
                 "success": False,
-                "message": "Failed to generate audio",
-                "audio": None
+                "message": f"Video is not ready yet. Status: {status['status']}",
+                "status": status["status"],
+                "progress": status.get("progress", 0)
             }
+        
+        # Download the video
+        video_path = await video_service.download_video(video_id)
+        
+        if video_path and video_path.exists():
+            return FileResponse(
+                path=str(video_path),
+                media_type="video/mp4",
+                filename=f"{video_id}.mp4"
+            )
+        else:
+            raise HTTPException(status_code=404, detail="Video file not found")
+            
     except Exception as e:
-        logger.error(f"Error generating audio: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error generating audio: {str(e)}")
+        logger.error(f"Error downloading video: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error downloading video: {str(e)}")
+
+# List all videos endpoint
+@app.get("/api/v1/videos")
+async def list_videos():
+    """List all generated videos"""
+    try:
+        videos = await video_service.list_videos()
+        return {
+            "success": True,
+            "videos": videos,
+            "count": len(videos)
+        }
+    except Exception as e:
+        logger.error(f"Error listing videos: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error listing videos: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn

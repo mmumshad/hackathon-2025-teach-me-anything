@@ -229,3 +229,36 @@ Make sure the questions are educational and test understanding of the topic."""
             "check my understanding", "test me", "questions"
         ]
         return any(keyword in message.lower() for keyword in quiz_keywords)
+    
+    def should_generate_video(self, message: str) -> bool:
+        """Determine if the message requests video generation"""
+        video_keywords = [
+            "video", "show me", "demonstrate", "visual", "see how", 
+            "watch", "animation", "explain with video", "create video",
+            "generate video", "make a video", "visualize", "illustrate"
+        ]
+        return any(keyword in message.lower() for keyword in video_keywords)
+    
+    def extract_video_prompt(self, message: str, ai_response: str) -> str:
+        """Extract or create a video prompt from the user message and AI response"""
+        # If user explicitly asks for video, use their request
+        if any(keyword in message.lower() for keyword in ["video", "show me", "demonstrate", "visualize"]):
+            # Extract the main topic from the message
+            topic = message.lower()
+            # Remove common video request words
+            for word in ["video", "show me", "demonstrate", "visualize", "create", "generate", "make", "please", "can you"]:
+                topic = topic.replace(word, "").strip()
+            
+            if topic:
+                return f"Educational video showing: {topic.strip()}"
+        
+        # Otherwise, create a video prompt based on the AI response content
+        # Take the first sentence or key concept from the response
+        sentences = ai_response.split('.')
+        if sentences:
+            first_sentence = sentences[0].strip()
+            if len(first_sentence) > 50:
+                first_sentence = first_sentence[:50] + "..."
+            return f"Educational video explaining: {first_sentence}"
+        
+        return "Educational video explaining the concept"
